@@ -1,0 +1,17 @@
+{
+  "name": "LectureAgent Mobile PWA",
+  "short_name": "LectureAgent",
+  "description": "Real-time lecture automation, matching and 1-tap review for center managers",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

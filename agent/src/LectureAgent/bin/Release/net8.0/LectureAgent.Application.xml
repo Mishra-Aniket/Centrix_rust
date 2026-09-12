@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>LectureAgent.Application</name>
+    </assembly>
+    <members>
+        <member name="T:LectureAgent.Application.Services.LectureSessionService">
+            <summary>
+            Service for managing lecture session lifecycle.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.LectureSessionService.CreateSessionAsync(System.String,System.String,System.String,System.String,System.String,System.Int64,System.DateTime,System.DateTime)">
+            <summary>
+            Creates a new lecture session from detected file.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.LectureSessionService.ConfirmAssignmentAsync(System.String,System.String,System.String,System.String,System.String)">
+            <summary>
+            Confirms a lecture assignment.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.LectureSessionService.GetPendingReviewAsync(System.String)">
+            <summary>
+            Gets lectures pending review for a center.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.LectureSessionService.UpdateStatusAsync(System.String,LectureAgent.Domain.Enums.LectureStatus,System.String)">
+            <summary>
+            Updates lecture status.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Application.Services.MatchingService">
+            <summary>
+            Service for matching lectures to timetable slots.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.MatchingService.AnalyzeAndAssignAsync(LectureAgent.Domain.Entities.LectureSession)">
+            <summary>
+            Analyzes a lecture and determines if it should be auto-assigned.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Application.Services.UploadQueueService">
+            <summary>
+            Service for managing upload queue.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.UploadQueueService.EnqueueFileAsync(System.String,System.String,System.String,System.Int64,System.String,System.String)">
+            <summary>
+            Adds a file to the upload queue.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.UploadQueueService.GetPendingUploadsAsync(System.Int32)">
+            <summary>
+            Gets pending uploads directly via optimized SQL query.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Application.Services.TimetableSyncService">
+            <summary>
+            Service for timetable synchronization.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.TimetableSyncService.SyncTimetableAsync(System.String)">
+            <summary>
+            Syncs timetable from cloud to local cache.
+            </summary>
+        </member>
+    </members>
+</doc>

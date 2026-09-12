@@ -1,0 +1,169 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>LectureAgent.Domain</name>
+    </assembly>
+    <members>
+        <member name="T:LectureAgent.Domain.Entities.Device">
+            <summary>
+            Represents a recording device at a center.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Entities.UploadQueueEntry">
+            <summary>
+            Represents an entry in the upload queue.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Entities.AuditLogEntry">
+            <summary>
+            Represents an audit log entry.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Entities.ConfigEntry">
+            <summary>
+            Configuration entry for the system.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Entities.LectureSession">
+            <summary>
+            Represents a recorded lecture session with metadata and assignment information.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Domain.Entities.LectureSession.GetDurationMinutes">
+            <summary>
+            Calculates the duration of the detected lecture in minutes.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Domain.Entities.LectureSession.GetTimeOverlapPercentage">
+            <summary>
+            Calculates the overlap percentage between detected and scheduled times.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Domain.Entities.LectureSession.IsComplete">
+            <summary>
+            Determines if this lecture is marked as complete.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Entities.TimetableEntry">
+            <summary>
+            Represents a timetable entry for a scheduled lecture.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Entities.TimetableOverride">
+            <summary>
+            Represents a timetable override (cancellation, interchange, etc).
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Enums.LectureStatus">
+            <summary>
+            Represents the lifecycle status of a lecture session.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Enums.ReviewStatus">
+            <summary>
+            Represents the review status of a lecture.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Enums.UploadStatus">
+            <summary>
+            Represents the upload status of a file to Google Drive.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Enums.MatchingDecision">
+            <summary>
+            Represents the decision result from the matching engine.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Enums.DeviceStatus">
+            <summary>
+            Device status in the system.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Enums.OnlineStatus">
+            <summary>
+            Online/offline status of a device.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Enums.OverrideType">
+            <summary>
+            Timetable override type.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.IFileWatcher">
+            <summary>
+            Interface for file watching and detection.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Domain.Services.IFileWatcher.ScanExisting">
+            <summary>
+            Re-enumerates the monitored folder and tracks any media files that are not
+            already being watched. Returns the number of newly tracked files.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.FileDetectedEventArgs">
+            <summary>
+            Event args when a file is detected.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.IMatchingEngine">
+            <summary>
+            Interface for matching engine.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.MatchingResult">
+            <summary>
+            Result from the matching engine.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.MatchingScoringDetails">
+            <summary>
+            Detailed scoring breakdown.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.ScoreFactor">
+            <summary>
+            Individual score factor.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.IGoogleDriveUploader">
+            <summary>
+            Interface for Google Drive upload.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.ITimetableProvider">
+            <summary>
+            Interface for timetable data provider.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.IAuditLogger">
+            <summary>
+            Interface for audit logging.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.IRepository`1">
+            <summary>
+            Generic repository interface.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.IUploadQueueRepository">
+            <summary>
+            Specialized repository for upload queue entries.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.INotificationService">
+            <summary>
+            Notification service interface.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.IFileValidator">
+            <summary>
+            File validation service.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.VideoMetadata">
+            <summary>
+            Video metadata.
+            </summary>
+        </member>
+    </members>
+</doc>

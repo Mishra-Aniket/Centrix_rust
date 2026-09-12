@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>LectureAgent.Domain</AssemblyName>
+    <RootNamespace>LectureAgent.Domain</RootNamespace>
+  </PropertyGroup>
+</Project>

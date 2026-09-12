@@ -1,0 +1,11 @@
+DASHBOARD ACCESS - Room 603 Agent
+==================================
+
+Dashboard URL (on this PC):     http://localhost:5200/
+Phone / MaxHub (same WiFi):     http://<this-pc-ip>:5200/
+(Find the IP: run "ipconfig" in CMD -> IPv4 Address)
+
+API key (paste once on the dashboard login screen):
+b73cdbacbe433087e9a2ed90cce28d4df57512eb16c9ce9f
+
+This key gives full control of the agent - keep this file private.

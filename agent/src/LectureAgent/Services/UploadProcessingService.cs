@@ -1,0 +1,220 @@
+namespace LectureAgent.Services;
+
+using LectureAgent.Application.Services;
+using LectureAgent.Domain.Entities;
+using LectureAgent.Domain.Enums;
+using LectureAgent.Domain.Services;
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+
+/// <summary>
+/// Background service that processes upload queue and uploads files to Google Drive.
+/// </summary>
+public class UploadProcessingService : BackgroundService
+{
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IConfiguration _config;
+    private readonly ILogger<UploadProcessingService> _logger;
+    private readonly AgentControlState _controlState;
+
+    public UploadProcessingService(
+        IServiceScopeFactory scopeFactory,
+        IConfiguration config,
+        ILogger<UploadProcessingService> logger,
+        AgentControlState controlState)
+    {
+        _scopeFactory = scopeFactory;
+        _config = config;
+        _logger = logger;
+        _controlState = controlState;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var checkInterval = int.TryParse(_config["UploadQueue:UploadCheckIntervalSeconds"], out var sec) ? sec : 30;
+
+        _logger.LogInformation($"Upload processing service started (check interval: {checkInterval}s)");
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (_controlState.UploadsPaused)
+                {
+                    _logger.LogDebug("Upload processing is paused; skipping queue check");
+                }
+                else
+                {
+                    await ProcessQueueAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error processing queue: {ex.Message}");
+            }
+
+            await Task.Delay(checkInterval * 1000, stoppingToken);
+        }
+
+        _logger.LogInformation("Upload processing service stopped");
+    }
+
+    private async Task ProcessQueueAsync()
+    {
+        try
+        {
+            var maxConcurrent = int.TryParse(_config["UploadQueue:MaxConcurrentUploads"], out var max) ? max : 3;
+            List<UploadQueueEntry> pendingUploads;
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var queueService = scope.ServiceProvider.GetRequiredService<UploadQueueService>();
+                pendingUploads = await queueService.GetPendingUploadsAsync(limit: maxConcurrent);
+            }
+
+            if (!pendingUploads.Any())
+                return;
+
+            _logger.LogInformation($"Processing {pendingUploads.Count} queued uploads");
+
+            var uploadTasks = pendingUploads.Select(entry => ProcessUploadAsync(entry)).ToList();
+            await Task.WhenAll(uploadTasks);
+        }
+        catch (SqliteException ex) when (ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Upload queue table is not ready yet; waiting for database initialization to complete.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning($"Upload queue is unavailable yet; waiting for tables to initialize: {ex.Message}");
+        }
+    }
+
+    private async Task ProcessUploadAsync(UploadQueueEntry entry)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var queueService = scope.ServiceProvider.GetRequiredService<UploadQueueService>();
+        var driveUploader = scope.ServiceProvider.GetRequiredService<IGoogleDriveUploader>();
+        var lectureService = scope.ServiceProvider.GetRequiredService<LectureSessionService>();
+        var auditLogger = scope.ServiceProvider.GetRequiredService<IAuditLogger>();
+        var notificationService = scope.ServiceProvider.GetService<INotificationService>();
+
+        try
+        {
+            _logger.LogInformation($"Processing upload: {entry.QueueEntryId} ({entry.FileType})");
+
+            // Check if should retry
+            if (entry.Status == UploadStatus.Failed)
+            {
+                if (entry.NextRetryAt > DateTime.UtcNow)
+                {
+                    _logger.LogDebug($"Upload not ready for retry: {entry.QueueEntryId}");
+                    return;
+                }
+
+                if (entry.RetryCount >= entry.MaxRetries)
+                {
+                    _logger.LogWarning($"Upload exceeded max retries: {entry.QueueEntryId}");
+                    entry.Status = UploadStatus.FailedPermanently;
+                    await queueService.SaveAsync(entry);
+                    await auditLogger.LogAsync(
+                        "UPLOAD_QUEUE", entry.QueueEntryId, "FAILED_PERMANENTLY", null,
+                        new { entry.Status }, UploadStatus.FailedPermanently,
+                        $"Failed after {entry.MaxRetries} retries");
+                    return;
+                }
+            }
+
+            // Update status to uploading
+            entry.Status = UploadStatus.Uploading;
+            await queueService.SaveAsync(entry);
+            await auditLogger.LogAsync(
+                "UPLOAD_QUEUE", entry.QueueEntryId, "UPLOAD_STARTED", null,
+                null, new { entry.Status }, "Upload started");
+
+            // Upload file
+            try
+            {
+                var fileId = await driveUploader.UploadFileAsync(entry, CancellationToken.None);
+
+                // Verify upload
+                var isVerified = await driveUploader.VerifyUploadAsync(fileId, entry.FileHash ?? "");
+
+                if (isVerified)
+                {
+                    // Mark as successful
+                    entry.Status = UploadStatus.Uploaded;
+                    entry.DriveFileId = fileId;
+                    entry.BytesUploaded = entry.FileSizeBytes;
+                    entry.LastError = null;
+                    entry.NextRetryAt = null;
+                    entry.UpdatedAt = DateTime.UtcNow;
+                    await queueService.SaveAsync(entry);
+
+                    // Update lecture status
+                    await lectureService.UpdateStatusAsync(
+                        entry.LectureSessionId,
+                        LectureStatus.Uploaded,
+                        "File successfully uploaded to Google Drive");
+
+                    await auditLogger.LogAsync(
+                        "UPLOAD_QUEUE", entry.QueueEntryId, "UPLOAD_COMPLETED", null,
+                        null, new { entry.Status, FileId = fileId },
+                        $"File uploaded successfully: {fileId}");
+
+                    _logger.LogInformation($"Upload completed: {entry.QueueEntryId}");
+                }
+                else
+                {
+                    throw new Exception("Upload verification failed");
+                }
+            }
+            catch (Exception uploadEx)
+            {
+                _logger.LogWarning($"Upload failed: {uploadEx.Message}");
+
+                // Retry logic
+                entry.Status = UploadStatus.Failed;
+                entry.RetryCount++;
+                entry.LastError = uploadEx.Message;
+                entry.NextRetryAt = CalculateNextRetryTime(entry.RetryCount);
+                entry.UpdatedAt = DateTime.UtcNow;
+                await queueService.SaveAsync(entry);
+
+                await auditLogger.LogAsync(
+                    "UPLOAD_QUEUE", entry.QueueEntryId, "UPLOAD_FAILED", null,
+                    null, new { entry.Status, entry.RetryCount, entry.NextRetryAt },
+                    $"Upload failed (attempt {entry.RetryCount}): {uploadEx.Message}");
+
+                // Notify on repeated failures
+                if (entry.RetryCount >= entry.MaxRetries)
+                {
+                    _logger.LogError($"Upload permanently failed: {entry.QueueEntryId}");
+                    if (notificationService != null)
+                    {
+                        var centerId = _config["Agent:CenterId"] ?? "UNKNOWN";
+                        await notificationService.NotifyUploadFailedAsync(centerId, entry, uploadEx.Message);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Error processing upload: {ex.Message}");
+            entry.LastError = ex.Message;
+        }
+    }
+
+    private DateTime CalculateNextRetryTime(int attemptNumber)
+    {
+        var retryDelaySecondsStr = _config["UploadQueue:RetryBackoffSeconds"] ?? "30,120,600,1800,3600";
+        var retryDelays = retryDelaySecondsStr.Split(',').Select(s => int.Parse(s.Trim())).ToList();
+
+        var delaySeconds = attemptNumber - 1 < retryDelays.Count
+            ? retryDelays[attemptNumber - 1]
+            : retryDelays.Last();
+
+        return DateTime.UtcNow.AddSeconds(delaySeconds);
+    }
+}

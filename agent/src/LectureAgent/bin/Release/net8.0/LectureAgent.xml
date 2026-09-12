@@ -1,0 +1,78 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>LectureAgent</name>
+    </assembly>
+    <members>
+        <member name="T:LectureAgent.Presentation.Controllers.HealthController">
+            <summary>
+            Health check and status endpoint.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.HealthController.GetHealth">
+            <summary>
+            Returns overall system health.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Presentation.Controllers.HealthStatusDto">
+            <summary>
+            DTO for health status.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Presentation.Controllers.LecturesController">
+            <summary>
+            REST API controller for lecture sessions.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.LecturesController.CreateLecture(LectureAgent.Presentation.Controllers.CreateLectureRequest)">
+            <summary>
+            Creates a new lecture session.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.LecturesController.GetLecture(System.String)">
+            <summary>
+            Gets a lecture by ID.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.LecturesController.ListLectures(System.String,System.String,System.Int32,System.Int32)">
+            <summary>
+            Lists lectures with optional filtering.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.LecturesController.ConfirmLecture(System.String,LectureAgent.Presentation.Controllers.ConfirmLectureRequest)">
+            <summary>
+            Confirms a lecture assignment.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.LecturesController.GetReviewQueue(System.String)">
+            <summary>
+            Gets pending reviews for a center.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Presentation.Controllers.LectureSessionDto">
+            <summary>
+            DTO for lecture session.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Presentation.Controllers.CreateLectureRequest">
+            <summary>
+            Request to create a lecture.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Presentation.Controllers.ConfirmLectureRequest">
+            <summary>
+            Request to confirm a lecture.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Services.FileMonitoringService">
+            <summary>
+            Background service that monitors files, matches them to timetable, and queues for upload.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Services.UploadProcessingService">
+            <summary>
+            Background service that processes upload queue and uploads files to Google Drive.
+            </summary>
+        </member>
+    </members>
+</doc>

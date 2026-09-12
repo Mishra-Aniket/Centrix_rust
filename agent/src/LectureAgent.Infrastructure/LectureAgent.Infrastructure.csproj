@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>LectureAgent.Infrastructure</AssemblyName>
+    <RootNamespace>LectureAgent.Infrastructure</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LectureAgent.Domain\LectureAgent.Domain.csproj" />
+    <ProjectReference Include="..\LectureAgent.Application\LectureAgent.Application.csproj" />
+  </ItemGroup>
+</Project>
