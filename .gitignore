@@ -3,6 +3,8 @@ bin/
 obj/
 **/bin/
 **/obj/
+artifacts/
+**/artifacts/
 *.user
 *.suo
 .vs/
