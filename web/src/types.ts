@@ -53,6 +53,7 @@ export interface QueueEntry {
   driveFileId?: string | null;
   lastError?: string | null;
   updatedAt: string;
+  roomId?: string | null;
 }
 
 export interface TimetableEntry {
@@ -71,6 +72,13 @@ export interface TimetableEntry {
   updatedAt: string;
 }
 
+export interface TimetableSummary {
+  totalLectures: number;
+  totalRooms: number;
+  dayCounts: Record<string, number>;
+  roomCounts: Record<string, number>;
+}
+
 export interface MonitorSnapshot {
   generatedAt: string;
   summary: {
@@ -79,6 +87,9 @@ export interface MonitorSnapshot {
     uploaded: number;
     failed: number;
     totalLectures: number;
+    uploadedToday?: number;
+    failedToday?: number;
+    totalToday?: number;
   };
   queue: QueueEntry[];
   lectures: {

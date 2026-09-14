@@ -1,6 +1,7 @@
 using LectureAgent.Domain.Entities;
 using LectureAgent.Domain.Enums;
 using LectureAgent.Infrastructure.Database;
+using LectureAgent.Infrastructure.Timetable;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
@@ -21,20 +22,107 @@ public sealed class TimetableController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<TimetableEntry>>> List(
         [FromQuery, Required] string centerId,
-        [FromQuery, Required] string roomId,
+        [FromQuery] string? roomId,
         [FromQuery] DateTime? date)
     {
         var requestedDate = (date ?? DateTime.UtcNow).Date;
         var nextDate = requestedDate.AddDays(1);
-        var entries = await _dbContext.TimetableEntries
+        var query = _dbContext.TimetableEntries
             .AsNoTracking()
             .Where(entry => entry.CenterId == centerId
-                && entry.RoomId == roomId
                 && entry.ScheduledDate >= requestedDate
-                && entry.ScheduledDate < nextDate)
+                && entry.ScheduledDate < nextDate);
+
+        if (!string.IsNullOrWhiteSpace(roomId) && !string.Equals(roomId, "ALL", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(entry => entry.RoomId == roomId);
+        }
+
+        var entries = await query.ToListAsync();
+        return Ok(entries.OrderBy(entry => entry.SlotStartTime).ToList());
+    }
+
+    [HttpGet("dates")]
+    public async Task<ActionResult<List<string>>> GetDates(
+        [FromQuery, Required] string centerId,
+        [FromQuery] string? roomId)
+    {
+        var query = _dbContext.TimetableEntries
+            .AsNoTracking()
+            .Where(entry => entry.CenterId == centerId);
+
+        if (!string.IsNullOrWhiteSpace(roomId) && !string.Equals(roomId, "ALL", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(entry => entry.RoomId == roomId);
+        }
+
+        var dates = await query
+            .Select(entry => entry.ScheduledDate)
+            .Distinct()
+            .OrderBy(d => d)
             .ToListAsync();
 
-        return Ok(entries.OrderBy(entry => entry.SlotStartTime).ToList());
+        return Ok(dates.Select(d => d.ToString("yyyy-MM-dd")).ToList());
+    }
+
+    [HttpPost("sync")]
+    public async Task<ActionResult> TriggerSync(
+        [FromServices] GoogleSheetTimetableSyncService syncService,
+        [FromQuery] string? centerId,
+        [FromQuery] string? roomId)
+    {
+        var count = await syncService.SyncScheduleAsync(_dbContext, centerId, roomId);
+        return Ok(new { count, message = $"Synced {count} timetable entries" });
+    }
+
+    [HttpGet("rooms")]
+    public async Task<ActionResult<List<string>>> GetRooms([FromQuery, Required] string centerId)
+    {
+        var rooms = await _dbContext.TimetableEntries
+            .AsNoTracking()
+            .Where(entry => entry.CenterId == centerId && !string.IsNullOrEmpty(entry.RoomId))
+            .Select(entry => entry.RoomId)
+            .Distinct()
+            .OrderBy(r => r)
+            .ToListAsync();
+
+        return Ok(rooms);
+    }
+
+    [HttpGet("summary")]
+    public async Task<ActionResult<TimetableSummaryDto>> GetSummary(
+        [FromQuery, Required] string centerId,
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate)
+    {
+        var now = DateTime.UtcNow;
+        var diff = (int)now.DayOfWeek - (int)DayOfWeek.Monday;
+        if (diff < 0) diff += 7;
+        var monday = now.Date.AddDays(-diff);
+        var start = (startDate ?? monday).Date;
+        var end = (endDate ?? start.AddDays(7)).Date;
+
+        var entries = await _dbContext.TimetableEntries
+            .AsNoTracking()
+            .Where(e => e.CenterId == centerId && e.ScheduledDate >= start && e.ScheduledDate < end)
+            .Select(e => new { e.ScheduledDate, e.RoomId })
+            .ToListAsync();
+
+        var dayCounts = entries
+            .GroupBy(e => e.ScheduledDate.Date.ToString("yyyy-MM-dd"))
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var roomCounts = entries
+            .GroupBy(e => e.RoomId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        return Ok(new TimetableSummaryDto
+        {
+            TotalLectures = entries.Count,
+            TotalRooms = roomCounts.Keys.Count,
+            DayCounts = dayCounts,
+            RoomCounts = roomCounts
+        });
     }
 
     [HttpPost]
@@ -184,4 +272,12 @@ public sealed class CreateTimetableOverrideRequest
     public TimeSpan? NewSlotEndTime { get; set; }
     public string? NewSlotId { get; set; }
     [Required] public DateTime EffectiveDate { get; set; }
+}
+
+public sealed class TimetableSummaryDto
+{
+    public int TotalLectures { get; set; }
+    public int TotalRooms { get; set; }
+    public Dictionary<string, int> DayCounts { get; set; } = new();
+    public Dictionary<string, int> RoomCounts { get; set; } = new();
 }

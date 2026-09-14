@@ -9,6 +9,7 @@ import type {
   RoomOverview,
   TimetableEntry,
   TimetableOverride,
+  TimetableSummary,
 } from './types';
 import { getStoredAgentUrl, getStoredApiKey, getStoredSessionToken, notifyUnauthorized } from './config';
 
@@ -105,8 +106,10 @@ export async function fetchControlState(): Promise<ControlState> {
   return request<ControlState>('/api/control/state');
 }
 
-export async function fetchSnapshot(): Promise<MonitorSnapshot> {
-  return request<MonitorSnapshot>('/api/monitor/snapshot');
+export async function fetchSnapshot(hours = 24, roomId?: string): Promise<MonitorSnapshot> {
+  const params = new URLSearchParams({ hours: hours.toString() });
+  if (roomId && roomId !== 'ALL') params.set('roomId', roomId);
+  return request<MonitorSnapshot>(`/api/monitor/snapshot?${params.toString()}`);
 }
 
 export async function fetchLectures(centerId: string, limit = 50): Promise<{ total: number; count: number; items: LectureSession[] }> {
@@ -117,10 +120,28 @@ export async function fetchReviewQueue(centerId: string): Promise<LectureSession
   return request(`/api/lectures/review-queue?centerId=${encodeURIComponent(centerId)}`);
 }
 
-export async function fetchTimetable(centerId: string, roomId: string, date?: string): Promise<TimetableEntry[]> {
-  const params = new URLSearchParams({ centerId, roomId });
+export async function fetchTimetable(centerId: string, roomId?: string, date?: string): Promise<TimetableEntry[]> {
+  const params = new URLSearchParams({ centerId });
+  if (roomId && roomId !== 'ALL') params.set('roomId', roomId);
   if (date) params.set('date', date);
   return request(`/api/timetable?${params.toString()}`);
+}
+
+export async function fetchTimetableRooms(centerId: string): Promise<string[]> {
+  return request(`/api/timetable/rooms?centerId=${encodeURIComponent(centerId)}`);
+}
+
+export async function fetchTimetableSummary(centerId: string, startDate?: string, endDate?: string): Promise<TimetableSummary> {
+  const params = new URLSearchParams({ centerId });
+  if (startDate) params.set('startDate', startDate);
+  if (endDate) params.set('endDate', endDate);
+  return request<TimetableSummary>(`/api/timetable/summary?${params.toString()}`);
+}
+
+export async function fetchTimetableDates(centerId: string, roomId?: string): Promise<string[]> {
+  const params = new URLSearchParams({ centerId });
+  if (roomId && roomId !== 'ALL') params.set('roomId', roomId);
+  return request(`/api/timetable/dates?${params.toString()}`);
 }
 
 export async function fetchOverrides(centerId: string, roomId?: string, date?: string): Promise<TimetableOverride[]> {

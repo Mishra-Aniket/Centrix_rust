@@ -19,6 +19,7 @@ import type {
   RoomOverview,
   TimetableEntry,
   TimetableOverride,
+  TimetableSummary,
 } from './types';
 import * as api from './api';
 import { clearApiKey, isConfigured, onUnauthorized } from './config';
@@ -62,6 +63,16 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [missingSlots, setMissingSlots] = useState<MissingSlot[]>([]);
   const [centerOverview, setCenterOverview] = useState<RoomOverview[]>([]);
   const [selectedRoom, setSelectedRoom] = useState('');
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [timetableRooms, setTimetableRooms] = useState<string[]>([]);
+  const [timetableSummary, setTimetableSummary] = useState<TimetableSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -86,14 +97,17 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       const center = info?.centerId || agentInfoRef.current?.centerId || '';
       const room = selectedRoom || info?.roomId || '603';
 
-      const [hData, sData, lData, tData, oData, cData, mData] = await Promise.all([
+      const [hData, sData, lData, tData, oData, cData, mData, datesData, roomsData, summaryData] = await Promise.all([
         api.fetchHealth().catch(() => null),
-        api.fetchSnapshot().catch(() => null),
+        api.fetchSnapshot(24, room).catch(() => null),
         api.fetchLectures(center, 30).catch(() => null),
-        center ? api.fetchTimetable(center, room).catch(() => null) : Promise.resolve(null),
-        center ? api.fetchOverrides(center, room).catch(() => null) : Promise.resolve(null),
+        center ? api.fetchTimetable(center, room, selectedDate).catch(() => null) : Promise.resolve(null),
+        center ? api.fetchOverrides(center, room, selectedDate).catch(() => null) : Promise.resolve(null),
         api.fetchControlState().catch(() => null),
-        center ? api.fetchMissingLectures(center, room).catch(() => null) : Promise.resolve(null),
+        center ? api.fetchMissingLectures(center, room === 'ALL' ? (info?.roomId || '603') : room).catch(() => null) : Promise.resolve(null),
+        center ? api.fetchTimetableDates(center, room).catch(() => null) : Promise.resolve(null),
+        center ? api.fetchTimetableRooms(center).catch(() => null) : Promise.resolve(null),
+        center ? api.fetchTimetableSummary(center).catch(() => null) : Promise.resolve(null),
       ]);
 
       if (hData) setHealth(hData);
@@ -102,13 +116,16 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       if (tData) setTimetable(tData);
       if (oData) setOverrides(oData);
       if (cData) setControlState(cData);
+      if (datesData) setAvailableDates(datesData);
+      if (roomsData) setTimetableRooms(roomsData);
+      if (summaryData) setTimetableSummary(summaryData);
       setMissingSlots(mData ?? []);
     } catch (err) {
       console.error('Failed to load data:', err);
     } finally {
       setLoading(false);
     }
-  }, [selectedRoom]);
+  }, [selectedRoom, selectedDate]);
 
   // Initial load + reload whenever the room changes
   useEffect(() => {
@@ -223,7 +240,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     if (!agentInfo) return;
 
     const slotId = `SLOT-${effectiveRoom}-EXTRA-${Date.now().toString(36).toUpperCase().slice(-4)}`;
-    const today = new Date().toISOString().split('T')[0];
+    const slotDate = addSlotModal.date || selectedDate;
 
     await runAction(
       () =>
@@ -231,7 +248,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           organizationId: agentInfo.organizationId,
           centerId: agentInfo.centerId,
           roomId: effectiveRoom,
-          scheduledDate: `${today}T00:00:00`,
+          scheduledDate: `${slotDate}T00:00:00`,
           slotStartTime: `${addSlotModal.slotStartTime}:00`,
           slotEndTime: `${addSlotModal.slotEndTime}:00`,
           slotId,
@@ -239,18 +256,19 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           subjectId: addSlotModal.subjectId,
           teacherId: addSlotModal.teacherId,
         }),
-      `✅ New slot added for ${addSlotModal.batchId}!`
+      `✅ New slot added for ${addSlotModal.batchId} (${slotDate})!`
     );
     setAddSlotModal((prev) => ({ ...prev, open: false }));
+    loadData();
   };
 
   const handleCancelSlot = (slot: TimetableEntry) => {
     if (!agentInfo) return;
-    if (!window.confirm(`Cancel "${slot.batchId} / ${slot.subjectId}" (${slot.slotStartTime.slice(0, 5)}) for today?`)) {
+    const targetDate = slot.scheduledDate ? slot.scheduledDate.split('T')[0] : selectedDate;
+    if (!window.confirm(`Cancel "${slot.batchId} / ${slot.subjectId}" (${slot.slotStartTime.slice(0, 5)}) for ${targetDate}?`)) {
       return;
     }
 
-    const today = new Date().toISOString().split('T')[0];
     runAction(
       () =>
         api.cancelTimetableSlot({
@@ -258,11 +276,19 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           centerId: agentInfo.centerId,
           roomId: slot.roomId,
           timetableEntryId: slot.timetableEntryId,
-          scheduledDate: slot.scheduledDate?.split('T')[0] || `${today}T00:00:00`,
+          scheduledDate: `${targetDate}T00:00:00`,
           slotId: slot.slotId,
         }),
-      `🚫 Slot ${slot.slotStartTime.slice(0, 5)} cancelled for today`
+      `🚫 Slot ${slot.slotStartTime.slice(0, 5)} cancelled for ${targetDate}`
     );
+  };
+
+  const handleSyncTimetable = async () => {
+    await runAction(
+      () => api.syncTimetableNow(),
+      '🔄 Timetable synced from Google Sheet!'
+    );
+    await loadData();
   };
 
   const handleUndoOverride = (overrideId: string) =>
@@ -327,10 +353,16 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const rooms = useMemo(() => {
     const set = new Set<string>();
     if (agentInfo?.roomId) set.add(agentInfo.roomId);
+    timetableRooms.forEach((r) => r && set.add(r));
+    centerOverview.forEach((r) => r.name && set.add(r.name));
     lectures.forEach((l) => l.roomId && set.add(l.roomId));
+    timetable.forEach((t) => t.roomId && set.add(t.roomId));
+    if (snapshot?.queue) {
+      snapshot.queue.forEach((q) => q.roomId && set.add(q.roomId));
+    }
     if (set.size === 0) set.add('603');
-    return Array.from(set);
-  }, [agentInfo, lectures]);
+    return Array.from(set).filter((r) => r !== 'ALL').sort();
+  }, [agentInfo, timetableRooms, centerOverview, lectures, timetable, snapshot]);
 
   // ---------- Modal state ----------
 
@@ -344,6 +376,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   const [addSlotModal, setAddSlotModal] = useState({
     open: false,
+    date: selectedDate,
     slotStartTime: '14:00',
     slotEndTime: '15:30',
     batchId: '',
@@ -408,7 +441,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
             agentInfo={agentInfo}
             controlState={controlState}
             timetable={timetable}
+            rooms={rooms}
             selectedRoom={effectiveRoom}
+            onSelectRoom={setSelectedRoom}
             pendingReviewCount={pendingReviews.length}
             missingSlots={missingSlots}
             busy={busy}
@@ -444,12 +479,16 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
             overrides={overrides}
             rooms={rooms}
             selectedRoom={effectiveRoom}
-            agentInfo={agentInfo}
+            selectedDate={selectedDate}
+            availableDates={availableDates}
+            timetableSummary={timetableSummary}
             busy={busy}
             onSelectRoom={setSelectedRoom}
-            onOpenAddSlot={() => setAddSlotModal((prev) => ({ ...prev, open: true }))}
+            onSelectDate={setSelectedDate}
+            onOpenAddSlot={() => setAddSlotModal((prev) => ({ ...prev, open: true, date: selectedDate }))}
             onCancelSlot={handleCancelSlot}
             onUndoOverride={handleUndoOverride}
+            onSyncNow={handleSyncTimetable}
           />
         )}
 
@@ -543,6 +582,16 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       >
         <form onSubmit={handleCreateSlot} className="space-y-4">
           <div className="space-y-3 text-xs">
+            <Field label="Slot Date">
+              <input
+                type="date"
+                value={addSlotModal.date}
+                onChange={(e) => setAddSlotModal((prev) => ({ ...prev, date: e.target.value }))}
+                className={inputClass}
+                required
+              />
+            </Field>
+
             <div className="grid grid-cols-2 gap-2">
               <Field label="Start Time">
                 <input

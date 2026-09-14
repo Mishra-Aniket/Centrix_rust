@@ -22,35 +22,66 @@ public sealed class MonitorController : ControllerBase
     }
 
     [HttpGet("snapshot")]
-    public async Task<ActionResult<MonitorSnapshotDto>> Snapshot()
+    public async Task<ActionResult<MonitorSnapshotDto>> Snapshot(
+        [FromQuery] int hours = 24,
+        [FromQuery] string? roomId = null)
     {
-        var queues = await _dbContext.UploadQueues
+        var cutoff = DateTime.UtcNow.AddHours(-hours);
+        var todayStart = DateTime.UtcNow.Date;
+
+        var queueQuery = _dbContext.UploadQueues
             .AsNoTracking()
-            .OrderByDescending(queue => queue.UpdatedAt)
-            .Take(25)
-            .Select(queue => new UploadMonitorDto
+            .Where(queue => queue.Status == UploadStatus.Uploading
+                         || queue.Status == UploadStatus.Pending
+                         || queue.UpdatedAt >= cutoff);
+
+        var joined = queueQuery.GroupJoin(
+            _dbContext.LectureSessions.AsNoTracking(),
+            q => q.LectureSessionId,
+            l => l.LectureSessionId,
+            (q, ls) => new { Queue = q, Lecture = ls.FirstOrDefault() }
+        );
+
+        if (!string.IsNullOrWhiteSpace(roomId) && !string.Equals(roomId, "ALL", StringComparison.OrdinalIgnoreCase))
+        {
+            joined = joined.Where(x => x.Lecture != null && x.Lecture.RoomId == roomId);
+        }
+
+        var queueList = await joined
+            .OrderByDescending(x => x.Queue.UpdatedAt)
+            .Take(50)
+            .Select(x => new UploadMonitorDto
             {
-                QueueEntryId = queue.QueueEntryId,
-                FileType = queue.FileType,
-                FileName = queue.DriveFileName ?? Path.GetFileName(queue.LocalFilePath),
-                LocalFilePath = queue.LocalFilePath,
-                FileSizeBytes = queue.FileSizeBytes,
-                BytesUploaded = queue.BytesUploaded,
-                Status = queue.Status.ToString(),
-                ProgressPercentage = queue.FileSizeBytes == 0
+                QueueEntryId = x.Queue.QueueEntryId,
+                FileType = x.Queue.FileType,
+                FileName = x.Queue.DriveFileName ?? Path.GetFileName(x.Queue.LocalFilePath),
+                LocalFilePath = x.Queue.LocalFilePath,
+                FileSizeBytes = x.Queue.FileSizeBytes,
+                BytesUploaded = x.Queue.BytesUploaded,
+                Status = x.Queue.Status.ToString(),
+                ProgressPercentage = x.Queue.FileSizeBytes == 0
                     ? 0
-                    : (int)(queue.BytesUploaded * 100d / queue.FileSizeBytes),
-                RetryCount = queue.RetryCount,
-                DriveFileId = queue.DriveFileId,
-                LastError = queue.LastError,
-                UpdatedAt = queue.UpdatedAt
+                    : (int)(x.Queue.BytesUploaded * 100d / x.Queue.FileSizeBytes),
+                RetryCount = x.Queue.RetryCount,
+                DriveFileId = x.Queue.DriveFileId,
+                LastError = x.Queue.LastError,
+                UpdatedAt = x.Queue.UpdatedAt,
+                RoomId = x.Lecture != null ? x.Lecture.RoomId : null
             })
             .ToListAsync();
 
-        var lectures = await _dbContext.LectureSessions
+        var lectureQuery = _dbContext.LectureSessions
             .AsNoTracking()
+            .Where(lecture => lecture.UpdatedAt >= cutoff);
+
+        if (!string.IsNullOrWhiteSpace(roomId) && !string.Equals(roomId, "ALL", StringComparison.OrdinalIgnoreCase))
+        {
+            lectureQuery = lectureQuery.Where(lecture => lecture.RoomId == roomId);
+        }
+
+        var lectures = await lectureQuery
             .OrderByDescending(lecture => lecture.UpdatedAt)
-            .Take(10)
+            .Take(25)
             .Select(lecture => new LectureMonitorDto
             {
                 LectureSessionId = lecture.LectureSessionId,
@@ -63,7 +94,7 @@ public sealed class MonitorController : ControllerBase
             })
             .ToListAsync();
 
-        foreach (var queue in queues)
+        foreach (var queue in queueList)
         {
             if (_progressStore.TryGet(queue.QueueEntryId, out var bytesUploaded))
             {
@@ -74,10 +105,14 @@ public sealed class MonitorController : ControllerBase
             }
         }
 
+        var uploadedToday = await _dbContext.UploadQueues.CountAsync(q => q.Status == UploadStatus.Uploaded && q.UpdatedAt >= cutoff);
+        var failedToday = await _dbContext.UploadQueues.CountAsync(q => (q.Status == UploadStatus.Failed || q.Status == UploadStatus.FailedPermanently) && q.UpdatedAt >= cutoff);
+        var totalToday = await _dbContext.UploadQueues.CountAsync(q => q.UpdatedAt >= cutoff);
+
         return Ok(new MonitorSnapshotDto
         {
             GeneratedAt = DateTime.UtcNow,
-            Queue = queues,
+            Queue = queueList,
             Lectures = lectures,
             Summary = new MonitorSummaryDto
             {
@@ -85,7 +120,10 @@ public sealed class MonitorController : ControllerBase
                 Uploading = await _dbContext.UploadQueues.CountAsync(queue => queue.Status == UploadStatus.Uploading),
                 Uploaded = await _dbContext.UploadQueues.CountAsync(queue => queue.Status == UploadStatus.Uploaded),
                 Failed = await _dbContext.UploadQueues.CountAsync(queue => queue.Status == UploadStatus.Failed || queue.Status == UploadStatus.FailedPermanently),
-                TotalLectures = await _dbContext.LectureSessions.CountAsync()
+                TotalLectures = await _dbContext.LectureSessions.CountAsync(),
+                UploadedToday = uploadedToday,
+                FailedToday = failedToday,
+                TotalToday = totalToday
             }
         });
     }
@@ -153,6 +191,9 @@ public sealed class MonitorSummaryDto
     public int Uploaded { get; set; }
     public int Failed { get; set; }
     public int TotalLectures { get; set; }
+    public int UploadedToday { get; set; }
+    public int FailedToday { get; set; }
+    public int TotalToday { get; set; }
 }
 
 public sealed class UploadMonitorDto
@@ -169,6 +210,7 @@ public sealed class UploadMonitorDto
     public string? DriveFileId { get; set; }
     public string? LastError { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public string? RoomId { get; set; }
 }
 
 public sealed class LectureMonitorDto
