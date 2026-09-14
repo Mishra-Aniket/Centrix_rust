@@ -424,28 +424,76 @@ Final: Moderate-high confidence (≈85%)
 Reason for Review: "Lecture started late, but duration consistent with slot"
 ```
 
-### Case D: No Matching Timetable Slot (Extra Lecture)
+### Case D: Blank Timetable on Off-Days (Saturdays, Sundays, Holidays)
 
 ```
-Timetable:
-09:00–10:30: Physics
-10:30–12:00: Chemistry
-
-Detected in Room A:
-12:15–13:45
+Scenario:
+- Date: Saturday / Sunday / Official Holiday
+- Timetable for Room A: Completely blank (0 scheduled slots)
+- Detected in Room A:
+  - Video Recording: 10:00–11:30 (90 min)
+  - Notes PDF: Exported at 11:31 (12 MB)
 
 Matching Engine:
-- No candidate slots overlap with 12:15–13:45
+- Available timetable slots: 0
+- Overlap score: 0%
+- Batch / Subject match: Unknown (confidence = 0%)
+
+Decision:
+- Status: EXTRA_LECTURE (Decision: NoMatch)
 - Confidence: 0%
 
-Result: EXTRA_LECTURE (or no match)
+Zero-Guesswork Upload Quarantine Policy:
+1. Anti-Corruption Guard: System strictly prohibits blind uploads when BatchId is empty.
+   if (string.IsNullOrWhiteSpace(session.BatchId)) { HoldUpload(); }
+2. Session Bonding: Video and PDF are paired into a single LectureSessionId via:
+   - Same RoomId (Room A)
+   - Same DeviceId
+   - Concurrent time window (video finished at 11:30, notes saved at 11:31).
+3. Review Queue Dispatch: Routed to Dashboard Review Queue:
+   "Extra lecture detected in Room A (10:00–11:30 AM). 1 Video + 1 Notes PDF awaiting batch assignment."
+4. 1-Tap Resolution: Coordinator selects Batch (e.g. Lakshya JEE) and Subject (e.g. Physics) and clicks Confirm.
+5. Upload Trigger: Both files are immediately enqueued and uploaded to:
+   Google Drive / <Center> / Lakshya JEE / Physics /
+```
 
-Actions:
-1. Notify reviewer: "Extra lecture detected in Room A at 12:15"
-2. Reviewer can:
-   - Assign manually to a batch/subject
-   - Mark as EXTRA_LECTURE (keep but not in timetable)
-   - Reject if it's a false positive
+### Case E: Unannounced / Surprise Class on Weekdays
+
+```
+Scenario:
+- Room A has a free gap between 14:00 and 16:00 on Monday (no class scheduled).
+- A teacher walks in without prior notification and takes an unannounced doubt or extra session from 14:15 to 15:45.
+
+Matching Engine:
+- Room A timetable has slots at 10:00–12:00 and 16:00–18:00, but none between 14:00 and 16:00.
+- Time overlap check with candidate slots: 0%
+- Confidence: 0%
+
+System Reaction:
+- The recording is NEVER attributed to the 10:00 or 16:00 slots (timing distance exceeds tolerance).
+- Marked as EXTRA_LECTURE / REVIEW_REQUIRED.
+- File is preserved locally and quarantined from auto-upload.
+- Operator verifies with teacher, assigns Batch & Subject via Review Queue, or enters an Emergency Override.
+```
+
+### Case F: Handwritten MaxHub Whiteboard Notes & Missing Cover Slides
+
+```
+Scenario:
+- Teacher opens a blank canvas on the MaxHub smartboard and writes entire lecture notes using the stylus/pen tool.
+- No cover slide or typed font exists; exported PDF contains vector stroke streams rather than digital font text.
+
+PdfTextExtractor Behavior:
+- Extracts de-compressed Flate streams and ASCII strings.
+- Detects 0 regex matches for typed batch codes or subject keywords.
+- HasHints returns false.
+
+System Resilience & Fallback:
+1. No False Positives: System does not guess or inject dummy batch names.
+2. Temporal & Physical Binding: Notes are tied to the PC camera video of that exact room and slot by:
+   - Device/Room ID matching
+   - Timestamp alignment within ±15 minutes of video conclusion
+3. Operator Confirmation: The session is routed to the Review Queue where the operator assigns the batch in one tap, guaranteeing 100% upload accuracy without relying on handwriting recognition.
 ```
 
 ---

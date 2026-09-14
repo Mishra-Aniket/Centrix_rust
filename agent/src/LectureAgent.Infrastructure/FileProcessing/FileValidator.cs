@@ -1,6 +1,7 @@
 namespace LectureAgent.Infrastructure.FileProcessing;
 
 using LectureAgent.Domain.Services;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Text.Json;
@@ -12,12 +13,14 @@ using System.Security.Cryptography;
 public class FileValidator : IFileValidator
 {
     private readonly ILogger<FileValidator> _logger;
+    private readonly IConfiguration? _configuration;
     private readonly string[] _allowedVideoExtensions = { ".mkv", ".mp4", ".mov", ".avi", ".webm" };
     private readonly string[] _allowedPdfExtensions = { ".pdf" };
 
-    public FileValidator(ILogger<FileValidator> logger)
+    public FileValidator(ILogger<FileValidator> logger, IConfiguration? configuration = null)
     {
         _logger = logger;
+        _configuration = configuration;
     }
 
     public async Task<bool> IsFileStableAsync(string filePath, int stabilityCheckMs = 1000)
@@ -134,12 +137,14 @@ public class FileValidator : IFileValidator
         {
             var extension = Path.GetExtension(filePath);
             if (string.Equals(extension, ".pdf", StringComparison.OrdinalIgnoreCase))
-                return new VideoMetadata { Codec = "pdf" };
+                return new VideoMetadata { Codec = "pdf", Source = "extension" };
+
+            var binary = ResolveFFprobePath(_configuration?["FileProcessing:FFprobePath"]);
 
             var startInfo = new ProcessStartInfo
             {
-                FileName = "ffprobe",
-                Arguments = $"-v quiet -print_format json -show_streams \"{filePath.Replace("\"", "\\\"")}\"",
+                FileName = binary,
+                Arguments = $"-v quiet -print_format json -show_streams -show_format \"{filePath.Replace("\"", "\\\"")}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -148,41 +153,128 @@ public class FileValidator : IFileValidator
 
             using var process = Process.Start(startInfo);
             if (process == null)
-                return new VideoMetadata { Codec = "unknown", Resolution = "unknown" };
+                return new VideoMetadata { Codec = "unknown", Resolution = "unknown", DurationSeconds = 0, Source = "fallback" };
 
             var output = await process.StandardOutput.ReadToEndAsync();
             await process.WaitForExitAsync();
             if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
-                return new VideoMetadata { Codec = "unknown", Resolution = "unknown" };
+                return new VideoMetadata { Codec = "unknown", Resolution = "unknown", DurationSeconds = 0, Source = "fallback" };
 
-            using var document = JsonDocument.Parse(output);
-            var stream = document.RootElement.TryGetProperty("streams", out var streams)
-                ? streams.EnumerateArray().FirstOrDefault(item => item.TryGetProperty("codec_type", out var type) && type.GetString() == "video")
-                : default;
-
-            if (stream.ValueKind == JsonValueKind.Undefined)
-                return new VideoMetadata { Codec = "unknown", Resolution = "unknown" };
-
-            var duration = stream.TryGetProperty("duration", out var durationProperty)
-                && double.TryParse(durationProperty.GetString(), out var seconds)
-                ? (int)Math.Round(seconds)
-                : 0;
-            var width = stream.TryGetProperty("width", out var widthProperty) ? widthProperty.GetInt32() : 0;
-            var height = stream.TryGetProperty("height", out var heightProperty) ? heightProperty.GetInt32() : 0;
-            var frameRate = ParseFrameRate(stream);
-
-            return new VideoMetadata
-            {
-                DurationSeconds = duration,
-                Codec = stream.TryGetProperty("codec_name", out var codec) ? codec.GetString() : "unknown",
-                Resolution = width > 0 && height > 0 ? $"{width}x{height}" : "unknown",
-                FrameRate = frameRate
-            };
+            var metadata = ParseFFprobeOutput(output);
+            return metadata ?? new VideoMetadata { Codec = "unknown", Resolution = "unknown", DurationSeconds = 0, Source = "fallback" };
         }
         catch (Exception ex)
         {
             _logger.LogWarning($"Metadata extraction unavailable: {ex.Message}");
-            return new VideoMetadata { Codec = "unknown", Resolution = "unknown" };
+            return new VideoMetadata { Codec = "unknown", Resolution = "unknown", DurationSeconds = 0, Source = "fallback" };
+        }
+    }
+
+    public static string ResolveFFprobePath(
+        string? configured,
+        string? baseDirectory = null,
+        Func<string, bool>? fileExists = null)
+    {
+        fileExists ??= File.Exists;
+        baseDirectory ??= AppContext.BaseDirectory;
+
+        var defaultName = OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe";
+
+        if (string.IsNullOrWhiteSpace(configured) || string.Equals(configured, "ffprobe", StringComparison.OrdinalIgnoreCase))
+        {
+            var bundled = Path.Combine(baseDirectory, defaultName);
+            if (fileExists(bundled))
+                return bundled;
+
+            return defaultName;
+        }
+
+        if (Path.IsPathRooted(configured))
+            return configured;
+
+        var candidate = Path.Combine(baseDirectory, configured);
+        if (fileExists(candidate))
+            return candidate;
+
+        return configured;
+    }
+
+    public static VideoMetadata? ParseFFprobeOutput(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("streams", out var streams) || streams.ValueKind != JsonValueKind.Array)
+                return null;
+
+            JsonElement videoStream = default;
+            var hasVideo = false;
+            foreach (var s in streams.EnumerateArray())
+            {
+                if (s.TryGetProperty("codec_type", out var type) && string.Equals(type.GetString(), "video", StringComparison.OrdinalIgnoreCase))
+                {
+                    videoStream = s;
+                    hasVideo = true;
+                    break;
+                }
+            }
+
+            if (!hasVideo)
+                return null;
+
+            double durationSeconds = 0;
+            var durationFound = false;
+
+            if (document.RootElement.TryGetProperty("format", out var format) && format.TryGetProperty("duration", out var formatDuration))
+            {
+                if (formatDuration.ValueKind == JsonValueKind.Number && formatDuration.TryGetDouble(out var num))
+                {
+                    durationSeconds = num;
+                    durationFound = true;
+                }
+                else if (formatDuration.ValueKind == JsonValueKind.String && double.TryParse(formatDuration.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var strNum))
+                {
+                    durationSeconds = strNum;
+                    durationFound = true;
+                }
+            }
+
+            if (!durationFound && videoStream.TryGetProperty("duration", out var streamDuration))
+            {
+                if (streamDuration.ValueKind == JsonValueKind.Number && streamDuration.TryGetDouble(out var num))
+                {
+                    durationSeconds = num;
+                    durationFound = true;
+                }
+                else if (streamDuration.ValueKind == JsonValueKind.String && double.TryParse(streamDuration.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var strNum))
+                {
+                    durationSeconds = strNum;
+                    durationFound = true;
+                }
+            }
+
+            var roundedDuration = (int)Math.Round(durationSeconds, MidpointRounding.AwayFromZero);
+            var codec = videoStream.TryGetProperty("codec_name", out var c) ? c.GetString() : "unknown";
+            var width = videoStream.TryGetProperty("width", out var w) ? w.GetInt32() : 0;
+            var height = videoStream.TryGetProperty("height", out var h) ? h.GetInt32() : 0;
+            var resolution = width > 0 && height > 0 ? $"{width}x{height}" : null;
+            var frameRate = ParseFrameRate(videoStream);
+
+            return new VideoMetadata
+            {
+                DurationSeconds = roundedDuration,
+                Codec = string.IsNullOrWhiteSpace(codec) ? "unknown" : codec,
+                Resolution = resolution,
+                FrameRate = frameRate,
+                Source = "ffprobe"
+            };
+        }
+        catch
+        {
+            return null;
         }
     }
 

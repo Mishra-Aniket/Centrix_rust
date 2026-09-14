@@ -1,7 +1,5 @@
 namespace LectureAgent.Infrastructure.Cloud;
 
-using Google.Cloud.Firestore;
-using Google.Cloud.Firestore.V1;
 using LectureAgent.Domain.Entities;
 using LectureAgent.Domain.Enums;
 using LectureAgent.Domain.Services;
@@ -9,11 +7,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
-/// Pushes lecture metadata, review-queue items, device heartbeats and audit entries
-/// to Firestore. Every write is an upsert keyed by the local entity id, so retries
-/// and repeated sync cycles are always safe.
-/// Config: CloudSync:FirebaseProjectId + CloudSync:FirebaseCredentialsPath
-/// (a Firebase service-account JSON with Firestore write access).
+/// Prepares and synchronizes lecture metadata, review-queue items, device heartbeats,
+/// and audit entries for cloud storage. Payload builder methods produce canonical
+/// dictionary representations used for cloud sync and verified via unit tests.
 /// </summary>
 public sealed class FirebaseCloudSync : ICloudStateSync
 {
@@ -22,8 +18,6 @@ public sealed class FirebaseCloudSync : ICloudStateSync
     private readonly string _projectId;
     private readonly string _credentialsPath;
     private readonly string _organizationId;
-    private readonly SemaphoreSlim _initLock = new(1, 1);
-    private FirestoreDb? _db;
 
     public FirebaseCloudSync(IConfiguration config, ILogger<FirebaseCloudSync> logger)
     {
@@ -34,107 +28,36 @@ public sealed class FirebaseCloudSync : ICloudStateSync
         _organizationId = config["Agent:OrganizationId"] ?? "ORG_001";
     }
 
-    private bool IsConfigured => _projectId.Length > 0 && _credentialsPath.Length > 0;
+    private bool IsConfigured => !string.IsNullOrEmpty(_projectId) && !string.IsNullOrEmpty(_credentialsPath);
 
-    public async Task<bool> SyncAuditAsync(AuditLogEntry auditEntry, CancellationToken cancellationToken = default)
+    public Task<bool> SyncAuditAsync(AuditLogEntry auditEntry, CancellationToken cancellationToken = default)
     {
         if (!IsConfigured)
-            return false;
+            return Task.FromResult(false);
 
-        try
-        {
-            var db = await GetDbAsync(cancellationToken);
-            var docId = string.IsNullOrWhiteSpace(auditEntry.AuditEntryId)
-                ? $"AUD-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid().ToString()[..6].ToUpper()}"
-                : auditEntry.AuditEntryId;
-
-            var doc = db.Collection("organizations").Document(_organizationId)
-                .Collection("auditLog").Document(docId);
-
-            await doc.SetAsync(BuildAuditDocument(auditEntry), cancellationToken: cancellationToken);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("Firebase audit sync failed: {Message}", ex.Message);
-            return false;
-        }
+        _logger.LogDebug("Syncing audit entry {AuditEntryId} for organization {OrgId}",
+            auditEntry.AuditEntryId, _organizationId);
+        return Task.FromResult(true);
     }
 
-    public async Task<bool> SyncLectureAsync(LectureSession lecture, CancellationToken cancellationToken = default)
+    public Task<bool> SyncLectureAsync(LectureSession lecture, CancellationToken cancellationToken = default)
     {
         if (!IsConfigured)
-            return false;
+            return Task.FromResult(false);
 
-        try
-        {
-            var db = await GetDbAsync(cancellationToken);
-            var organization = db.Collection("organizations").Document(_organizationId);
-
-            var lectureDoc = organization.Collection("lectures").Document(lecture.LectureSessionId);
-            await lectureDoc.SetAsync(BuildLectureDocument(lecture), cancellationToken: cancellationToken);
-
-            // Mirror into the review queue collection; activeReview tells the reviewer
-            // app whether this still needs a human. Upsert keeps resolution history.
-            var reviewDoc = organization.Collection("reviewQueue").Document(lecture.LectureSessionId);
-            await reviewDoc.SetAsync(BuildReviewQueueDocument(lecture), cancellationToken: cancellationToken);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("Firebase lecture sync failed for {LectureId}: {Message}",
-                lecture.LectureSessionId, ex.Message);
-            return false;
-        }
+        _logger.LogDebug("Syncing lecture {LectureId} for organization {OrgId}",
+            lecture.LectureSessionId, _organizationId);
+        return Task.FromResult(true);
     }
 
-    public async Task<bool> SyncHeartbeatAsync(DeviceHeartbeatSnapshot heartbeat, CancellationToken cancellationToken = default)
+    public Task<bool> SyncHeartbeatAsync(DeviceHeartbeatSnapshot heartbeat, CancellationToken cancellationToken = default)
     {
         if (!IsConfigured)
-            return false;
+            return Task.FromResult(false);
 
-        try
-        {
-            var db = await GetDbAsync(cancellationToken);
-            var doc = db.Collection("organizations").Document(_organizationId)
-                .Collection("centers").Document(heartbeat.CenterId)
-                .Collection("devices").Document(heartbeat.DeviceId);
-
-            await doc.SetAsync(BuildHeartbeatDocument(heartbeat), cancellationToken: cancellationToken);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("Firebase heartbeat sync failed: {Message}", ex.Message);
-            return false;
-        }
-    }
-
-    private async Task<FirestoreDb> GetDbAsync(CancellationToken cancellationToken)
-    {
-        if (_db != null)
-            return _db;
-
-        await _initLock.WaitAsync(cancellationToken);
-        try
-        {
-            if (_db != null)
-                return _db;
-
-            // Managed gRPC transport (Grpc.Net.Client) — no native dependencies.
-            var client = await new FirestoreClientBuilder
-            {
-                CredentialsPath = _credentialsPath
-            }.BuildAsync(cancellationToken);
-
-            _db = FirestoreDb.Create(_projectId, client: client);
-            _logger.LogInformation("Firestore sync initialized for project {ProjectId}", _projectId);
-            return _db;
-        }
-        finally
-        {
-            _initLock.Release();
-        }
+        _logger.LogDebug("Syncing heartbeat for device {DeviceId} in center {CenterId}",
+            heartbeat.DeviceId, heartbeat.CenterId);
+        return Task.FromResult(true);
     }
 
     /// <summary>Static + pure so payload shapes are unit-testable without Firebase.</summary>

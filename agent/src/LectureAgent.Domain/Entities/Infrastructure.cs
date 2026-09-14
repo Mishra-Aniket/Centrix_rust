@@ -97,3 +97,20 @@ public class ConfigEntry
 
     public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// Snapshot of device health and upload counters.
+/// </summary>
+public class DeviceHeartbeatSnapshot
+{
+    public string DeviceId { get; set; } = null!;
+    public string CenterId { get; set; } = null!;
+    public string RoomId { get; set; } = null!;
+    public string OrganizationId { get; set; } = null!;
+    public string AgentVersion { get; set; } = null!;
+    public bool Online { get; set; } = true;
+    public int PendingUploads { get; set; }
+    public int FailedUploads { get; set; }
+    public int PendingReviews { get; set; }
+    public DateTime RecordedAtUtc { get; set; } = DateTime.UtcNow;
+}

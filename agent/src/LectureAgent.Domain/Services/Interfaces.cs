@@ -88,6 +88,7 @@ public interface IGoogleDriveUploader
     Task<string> UploadFileAsync(UploadQueueEntry entry, CancellationToken cancellationToken = default);
     Task<bool> VerifyUploadAsync(string fileId, string expectedHash);
     Task CreateFolderStructureAsync(string folderPath);
+    Task<List<string>> ListFoldersAsync(string? query = null, int limit = 200, string? underPath = null, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -113,6 +114,16 @@ public interface IAuditLogger
 public interface ICloudMetadataSync
 {
     Task<bool> SyncAuditAsync(AuditLogEntry auditEntry, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Cloud sync interface for state sync (lectures, review queue, device heartbeats, and audit entries).
+/// </summary>
+public interface ICloudStateSync
+{
+    Task<bool> SyncAuditAsync(AuditLogEntry auditEntry, CancellationToken cancellationToken = default);
+    Task<bool> SyncLectureAsync(LectureSession lecture, CancellationToken cancellationToken = default);
+    Task<bool> SyncHeartbeatAsync(DeviceHeartbeatSnapshot heartbeat, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -177,4 +188,5 @@ public class VideoMetadata
     public string? Codec { get; set; }
     public string? Resolution { get; set; }
     public int? FrameRate { get; set; }
+    public string? Source { get; set; }
 }

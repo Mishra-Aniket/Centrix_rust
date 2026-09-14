@@ -47,14 +47,14 @@ public static partial class PdfTextExtractor
     [GeneratedRegex(@"BATCH\s*(?:CODE)?\s*[:=\-]\s*([A-Za-z0-9\-\s]{4,30})", RegexOptions.IgnoreCase)]
     private static partial Regex BatchCodeLabelRegex();
 
-    [GeneratedRegex(@"SUBJECT\s*(?:NAME)?\s*[:=\-]\s*([A-Za-z\s]{3,30})", RegexOptions.IgnoreCase)]
-    private static partial Regex SubjectLabelRegex();
+    private static readonly Regex SubjectLabelRegexInst = new(@"SUBJECT\s*(?:NAME)?\s*[:=\-]\s*([A-Za-z\s]{2,30}?)(?=\s+(?:CHAPTER|By|Teacher|Faculty|Lecture)|\r|\n|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static Regex SubjectLabelRegex() => SubjectLabelRegexInst;
 
-    [GeneratedRegex(@"CHAPTER\s*(?:NAME)?\s*[:=\-]\s*([A-Za-z0-9\s]{3,40})", RegexOptions.IgnoreCase)]
-    private static partial Regex ChapterLabelRegex();
+    private static readonly Regex ChapterLabelRegexInst = new(@"CHAPTER\s*(?:NAME)?\s*[:=\-]\s*([A-Za-z0-9\s]{2,40}?)(?=\s+(?:By|Teacher|Faculty|Lecture)|\r|\n|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static Regex ChapterLabelRegex() => ChapterLabelRegexInst;
 
-    [GeneratedRegex(@"(?:By\s*[-:]*|Teacher\s*[:\-]*|Faculty\s*[:\-]*)\s*([A-Za-z][A-Za-z\s]{2,25}(?:Sir|Ma'am|Mam)?)", RegexOptions.IgnoreCase)]
-    private static partial Regex TeacherLabelRegex();
+    private static readonly Regex TeacherLabelRegexInst = new(@"(?:By\s*[-:]*|Teacher\s*[:\-]*|Faculty\s*[:\-]*)\s*([A-Za-z][A-Za-z\s]{1,25}?\b(?:Sir|Ma'am|Mam)\b|[A-Za-z][A-Za-z\s]{1,25}?)(?=\s+(?:Lecture|Chapter|Subject|Batch|Date|\d)|\r|\n|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static Regex TeacherLabelRegex() => TeacherLabelRegexInst;
 
     [GeneratedRegex(@"Lecture\s*(?:No\.?)?\s*[:=\-]?\s*(0?[1-9]\d?)", RegexOptions.IgnoreCase)]
     private static partial Regex LectureNumberRegex();

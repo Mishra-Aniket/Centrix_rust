@@ -110,7 +110,8 @@ flowchart TD
 
 ### 2. 📑 Smart MaxHub PDF & Video Pairing
 * **Dual-Device Classrooms Supported**: Seamlessly pairs the camera recording from the PC with the lecture notes PDF exported from the MaxHub interactive flat panel.
-* **First-Page PDF Text Extraction**: Automatically inspects the first slide/page of the MaxHub PDF to extract batch names, subject codes, and teacher initials with zero manual typing.
+* **First-Page PDF Text Extraction**: Automatically inspects the cover slide/page of the MaxHub PDF to extract batch names, subject codes, and teacher initials with zero manual typing.
+* **Resilient to Handwritten / Canvas Notes**: Even when instructors write on a blank whiteboard with pen strokes (non-OCR vector drawings) or omit cover slides, Centrix binds the video and PDF into a unified session using strict room and temporal correlation.
 * **Unified Destination**: Places both the video and the PDF in the exact same organized Google Drive hierarchy:
   ```
   LectureRecordings / <CenterName> / <BatchName> / <SubjectName> /
@@ -146,6 +147,12 @@ $$\text{Confidence} = w_1 \cdot S_{\text{time}} + w_2 \cdot S_{\text{overlap}} +
 * **Live Feed & Progress**: Real-time progress bars and status indicators for files in transit.
 * **Timetable Editor & Emergency Slots**: Add extra lectures, cancel slots for holidays, or swap subjects on the fly without touching backend files.
 * **Center Multi-Room Overview**: Monitor all room agents in the building from a single master screen.
+
+### 7. 🛡️ Unscheduled, Blank-Timetable & Surprise Lecture Resilience
+* **Zero-Guesswork Anti-Corruption Quarantine**: When an unexpected lecture takes place on an off-day (e.g., Saturday test discussions, Sunday doubt clinics) or when a teacher conducts an unannounced class without a timetable entry, Centrix **strictly avoids blind uploads**. If no batch destination can be verified with high confidence, the upload is held in safe local storage rather than misrouting files to arbitrary folders.
+* **Hardware & Temporal Session Bonding**: Even when notes are entirely handwritten (vector pen strokes) and the timetable is empty, the system pairs the MP4 video and exported PDF by verifying identical `RoomId`, `DeviceId`, and concurrent recording/export time windows.
+* **1-Tap Operator Confirmation**: Ambiguous and unscheduled recordings immediately populate the mobile/desktop **Review Queue** with detected metadata (Room, Start/End time, duration, file sizes). Center staff select the target Batch & Subject in 5 seconds to instantly dispatch both files to their correct Google Drive destination.
+* **Emergency Slot Ingestion**: If an extra lecture is planned in advance, operators can register an "Extra Lecture" override through the Timetable Editor in 2 clicks, converting the session into a 100% automated zero-touch ingestion.
 
 ---
 
@@ -396,6 +403,27 @@ When a file is detected, Centrix checks if a lecture session for the same room a
 <details>
 <summary><b>4. How does the MaxHub PDF pairing work?</b></summary>
 In rooms with a MaxHub interactive board, the teacher exports their notes as a PDF. Centrix inspects the first page text using its PDF reader to extract the batch title and subject, and pairs it with the camera video recorded in the same time window, grouping both files into the same batch folder in Google Drive.
+</details>
+
+<details>
+<summary><b>5. How does Centrix handle unscheduled classes or blank timetables (e.g., Saturdays / surprise classes)?</b></summary>
+When a teacher conducts a lecture on an off-day (such as Saturday) or enters a room unannounced on a weekday when no timetable slot is scheduled, Centrix's <b>Zero-Guesswork Safety Policy</b> activates:
+<ul>
+  <li><b>No Blind Uploads:</b> The system refuses to push files to arbitrary Drive folders if the destination batch cannot be verified with high confidence.</li>
+  <li><b>Dual File Bonding:</b> The camera video recording and exported notes PDF are automatically grouped together into a single session based on identical <code>RoomId</code>, <code>DeviceId</code>, and matching start/end timestamps.</li>
+  <li><b>1-Tap Review Queue:</b> The session is immediately routed to the center dashboard's Review Queue labeled as <code>EXTRA_LECTURE</code>. The center operator or coordinator simply selects the Batch & Subject from a dropdown and taps <i>Confirm</i>. Both video and notes are instantly dispatched to the correct Google Drive folder.</li>
+  <li><b>Pre-Emptive Override:</b> If the class is known in advance, center staff can add an <i>Extra Slot</i> in the Timetable Editor, allowing Centrix to match and upload the lecture with 100% zero-touch automation.</li>
+</ul>
+</details>
+
+<details>
+<summary><b>6. What happens if the teacher writes notes by hand on MaxHub without a printed cover slide?</b></summary>
+Teachers often write notes using interactive pen tools on a blank canvas, producing vector line strokes rather than OCR/font-based digital text. In such cases:
+<ul>
+  <li>The PDF text extractor safely reports zero textual hints without throwing exceptions or corrupting data.</li>
+  <li>Because room hardware mapping (<code>RoomId</code>) and recording time windows remain strictly identical between the PC's video recording and the board's PDF export, the two files remain firmly paired.</li>
+  <li>The session transitions to <code>Review Required</code> or <code>Extra Lecture</code>. An operator verifies the batch in 5 seconds via the mobile/desktop Review Queue, ensuring 100% upload accuracy without relying on handwriting recognition.</li>
+</ul>
 </details>
 
 ---

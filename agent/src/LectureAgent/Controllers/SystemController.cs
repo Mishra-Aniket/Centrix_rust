@@ -29,7 +29,7 @@ public sealed class SystemController : ControllerBase
     }
 
     /// <summary>
-    /// Returns live hardware & OS metrics (CPU, RAM, Disk, Uptime).
+    /// Returns live hardware &amp; OS metrics (CPU, RAM, Disk, Uptime).
     /// </summary>
     [HttpGet("status")]
     public ActionResult<SystemMetricsDto> GetStatus()

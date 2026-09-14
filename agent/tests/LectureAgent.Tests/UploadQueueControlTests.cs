@@ -168,5 +168,7 @@ public class UploadQueueControlTests : IDisposable
         public Task<string> UploadFileAsync(UploadQueueEntry entry, System.Threading.CancellationToken ct = default) => Task.FromResult("drive_id");
         public Task<bool> VerifyUploadAsync(string fileId, string expectedHash) => Task.FromResult(true);
         public Task CreateFolderStructureAsync(string folderPath) => Task.CompletedTask;
+        public Task<List<string>> ListFoldersAsync(string? query = null, int limit = 200, string? underPath = null, System.Threading.CancellationToken cancellationToken = default) =>
+            Task.FromResult(new List<string>());
     }
 }

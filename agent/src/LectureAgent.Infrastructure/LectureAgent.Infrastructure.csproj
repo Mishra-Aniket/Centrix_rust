@@ -8,4 +8,7 @@
     <ProjectReference Include="..\LectureAgent.Domain\LectureAgent.Domain.csproj" />
     <ProjectReference Include="..\LectureAgent.Application\LectureAgent.Application.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
 </Project>

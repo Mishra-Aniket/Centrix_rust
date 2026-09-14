@@ -121,6 +121,51 @@ public sealed class GoogleDriveUploader : IGoogleDriveUploader
         await Task.CompletedTask;
     }
 
+    public async Task<List<string>> ListFoldersAsync(string? query = null, int limit = 200, string? underPath = null, CancellationToken cancellationToken = default)
+    {
+        var service = await GetDriveServiceAsync();
+        var qParts = new List<string>
+        {
+            "mimeType = 'application/vnd.google-apps.folder'",
+            "trashed = false"
+        };
+
+        if (!string.IsNullOrWhiteSpace(underPath))
+        {
+            try
+            {
+                var parentId = await FindExistingFolderPathAsync(service, underPath);
+                qParts.Add($"'{parentId}' in parents");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Could not resolve underPath '{UnderPath}': {Message}", underPath, ex.Message);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var escaped = query.Replace("'", "\\'");
+            qParts.Add($"name contains '{escaped}'");
+        }
+
+        var listRequest = service.Files.List();
+        listRequest.Q = string.Join(" and ", qParts);
+        listRequest.SupportsAllDrives = true;
+        listRequest.IncludeItemsFromAllDrives = true;
+        listRequest.Spaces = "drive";
+        listRequest.Fields = "files(id, name)";
+        listRequest.PageSize = Math.Clamp(limit, 1, 1000);
+
+        var result = await listRequest.ExecuteAsync(cancellationToken);
+        return result.Files?
+            .Select(f => f.Name)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct()
+            .OrderBy(n => n)
+            .ToList() ?? new List<string>();
+    }
+
     private async Task<DriveService> GetDriveServiceAsync()
     {
         if (_driveService != null)

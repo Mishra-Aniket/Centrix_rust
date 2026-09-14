@@ -13,6 +13,7 @@ using LectureAgent.Infrastructure.Matching;
 using LectureAgent.Infrastructure.Timetable;
 using LectureAgent.Infrastructure.Tracker;
 using LectureAgent.Security;
+using LectureAgent.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
 
@@ -81,6 +82,9 @@ builder.Services.AddScoped<IGoogleDriveUploader>(sp =>
 builder.Services.AddScoped<IAuditLogger, DatabaseAuditLogger>();
 builder.Services.AddScoped<INotificationService>(sp => new MockNotificationService());
 builder.Services.AddHttpClient<ICloudMetadataSync, HttpCloudMetadataSync>();
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<ICredentialProtector, CredentialProtector>();
+builder.Services.AddSingleton<DashboardSessionService>();
 
 // Controllers
 builder.Services.AddControllers()
@@ -179,6 +183,8 @@ public class MockGoogleDriveUploader : IGoogleDriveUploader
     public Task<string> UploadFileAsync(UploadQueueEntry entry, CancellationToken ct = default) => Task.FromResult("mock_file_id");
     public Task<bool> VerifyUploadAsync(string fileId, string expectedHash) => Task.FromResult(true);
     public Task CreateFolderStructureAsync(string folderPath) => Task.CompletedTask;
+    public Task<List<string>> ListFoldersAsync(string? query = null, int limit = 200, string? underPath = null, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new List<string> { "Batch-2026-A", "Batch-2026-B" });
 }
 
 public class MockAuditLogger : IAuditLogger

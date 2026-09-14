@@ -1,10 +1,15 @@
 using System.Security.Cryptography;
 using System.Text;
+using LectureAgent.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace LectureAgent.Security;
 
 public sealed class ApiKeyMiddleware
 {
+    public const string DashboardSessionItem = "DashboardSession";
+    public const string AuthModeItem = "AuthMode";
+
     private readonly RequestDelegate _next;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ApiKeyMiddleware> _logger;
@@ -21,8 +26,14 @@ public sealed class ApiKeyMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        if (!_configuration.GetValue("Auth:Enabled", false)
-            || IsPublicPath(context.Request.Path))
+        if (!_configuration.GetValue("Auth:Enabled", false))
+        {
+            context.Items[AuthModeItem] = "key";
+            await _next(context);
+            return;
+        }
+
+        if (IsPublicPath(context.Request.Path))
         {
             await _next(context);
             return;
@@ -30,37 +41,58 @@ public sealed class ApiKeyMiddleware
 
         var configuredKey = _configuration["Auth:ApiKey"];
         var suppliedKey = context.Request.Headers["X-Agent-Key"].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(configuredKey)
-            || string.IsNullOrWhiteSpace(suppliedKey)
-            || !CryptographicEquals(configuredKey, suppliedKey))
+
+        // 1. Check API Key
+        if (!string.IsNullOrWhiteSpace(configuredKey)
+            && !string.IsNullOrWhiteSpace(suppliedKey)
+            && CryptographicEquals(configuredKey, suppliedKey))
         {
-            _logger.LogWarning("Rejected unauthenticated request to {Path}", context.Request.Path);
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new { error = "Authentication required" });
+            var configuredCenter = _configuration["Agent:CenterId"];
+            var requestedCenter = context.Request.Headers["X-Center-Id"].FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(requestedCenter)
+                && !string.Equals(configuredCenter, requestedCenter, StringComparison.Ordinal))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsJsonAsync(new { error = "Center access denied" });
+                return;
+            }
+
+            context.Items[AuthModeItem] = "key";
+            await _next(context);
             return;
         }
 
-        var configuredCenter = _configuration["Agent:CenterId"];
-        var requestedCenter = context.Request.Headers["X-Center-Id"].FirstOrDefault();
-        if (!string.IsNullOrWhiteSpace(requestedCenter)
-            && !string.Equals(configuredCenter, requestedCenter, StringComparison.Ordinal))
+        // 2. Check Dashboard Google Session
+        var sessionToken = context.Request.Headers["X-Session"].FirstOrDefault() 
+            ?? context.Request.Cookies["lasrs_session"];
+        if (!string.IsNullOrWhiteSpace(sessionToken))
         {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new { error = "Center access denied" });
-            return;
+            var sessionService = context.RequestServices?.GetService<DashboardSessionService>();
+            if (sessionService != null && sessionService.TryValidateSession(sessionToken, out var session) && session != null)
+            {
+                context.Items[DashboardSessionItem] = session;
+                context.Items[AuthModeItem] = "google";
+                await _next(context);
+                return;
+            }
         }
 
-        await _next(context);
+        _logger.LogWarning("Rejected unauthenticated request to {Path}", context.Request.Path);
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await context.Response.WriteAsJsonAsync(new { error = "Authentication required" });
     }
 
     /// <summary>
     /// Everything outside /api is the static dashboard shell (html, js, css, icons) and
     /// carries no secrets, so it loads without a key and the login screen can render.
-    /// /api/health stays public for uptime checks; every other API call needs the key.
+    /// /api/health and /api/auth/config, /api/auth/google/* stay public for sign-in.
     /// </summary>
     private static bool IsPublicPath(PathString path) =>
         !path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWithSegments("/api/health", StringComparison.OrdinalIgnoreCase);
+        || path.StartsWithSegments("/api/health", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/api/auth/config", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/api/auth/google", StringComparison.OrdinalIgnoreCase);
 
     private static bool CryptographicEquals(string expected, string supplied)
     {
