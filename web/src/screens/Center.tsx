@@ -34,41 +34,41 @@ export function CenterScreen({ overview, busy, loading, onRefresh, onSaveRoom, o
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="flex items-center justify-between px-1">
         <div>
-          <h2 className="text-sm font-bold text-white">Center Overview</h2>
-          <p className="text-[11px] text-slate-400">All room agents on one screen</p>
+          <h2 className="text-sm font-bold text-slate-900">Center Overview</h2>
+          <p className="text-[11px] text-slate-500">All room agents on one screen</p>
         </div>
         <button
           onClick={onRefresh}
           disabled={loading}
-          className="p-2 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-300 hover:text-white active:scale-95 transition disabled:opacity-40"
+          className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 active:scale-95 transition disabled:opacity-40 shadow-xs"
           title="Refresh"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-400' : ''}`} />
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-600' : ''}`} />
         </button>
       </div>
 
       {/* Center-wide totals */}
       <div className="grid grid-cols-4 gap-2">
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 text-center">
-          <p className="text-[10px] text-slate-400">Live</p>
-          <p className={`text-lg font-bold ${liveCount === overview.length && overview.length > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 text-center shadow-xs">
+          <p className="text-[10px] text-slate-500 font-medium">Live</p>
+          <p className={`text-lg font-bold ${liveCount === overview.length && overview.length > 0 ? 'text-emerald-700' : 'text-amber-600'}`}>
             {liveCount}/{overview.length}
           </p>
         </div>
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 text-center">
-          <p className="text-[10px] text-slate-400">Uploading</p>
-          <p className="text-lg font-bold text-cyan-400">{totalUploading}</p>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 text-center shadow-xs">
+          <p className="text-[10px] text-slate-500 font-medium">Uploading</p>
+          <p className="text-lg font-bold text-cyan-700">{totalUploading}</p>
         </div>
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 text-center">
-          <p className="text-[10px] text-slate-400">Failed</p>
-          <p className={`text-lg font-bold ${totalFailed > 0 ? 'text-red-400' : 'text-slate-200'}`}>{totalFailed}</p>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 text-center shadow-xs">
+          <p className="text-[10px] text-slate-500 font-medium">Failed</p>
+          <p className={`text-lg font-bold ${totalFailed > 0 ? 'text-red-600' : 'text-slate-800'}`}>{totalFailed}</p>
         </div>
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 text-center">
-          <p className="text-[10px] text-slate-400">Missing</p>
-          <p className={`text-lg font-bold ${totalMissing > 0 ? 'text-amber-400' : 'text-slate-200'}`}>{totalMissing}</p>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 text-center shadow-xs">
+          <p className="text-[10px] text-slate-500 font-medium">Missing</p>
+          <p className={`text-lg font-bold ${totalMissing > 0 ? 'text-amber-600' : 'text-slate-800'}`}>{totalMissing}</p>
         </div>
       </div>
 
@@ -78,28 +78,28 @@ export function CenterScreen({ overview, busy, loading, onRefresh, onSaveRoom, o
       </ActionButton>
 
       {overview.length === 0 ? (
-        <Card className="text-center text-xs text-slate-400 space-y-2 p-6">
-          <Building2 className="w-8 h-8 text-slate-500 mx-auto" />
-          <p className="font-semibold text-slate-200">No rooms added yet</p>
-          <p className="text-[11px] leading-relaxed">
+        <Card className="text-center text-xs text-slate-500 space-y-2 p-6">
+          <Building2 className="w-8 h-8 text-slate-400 mx-auto" />
+          <p className="font-bold text-slate-800">No other rooms linked yet</p>
+          <p className="text-[11px] leading-relaxed text-slate-500">
             Har room ke PC pe agent install karo (same zip, wizard mein alag Room ID), phir
-            us PC ka URL + API key yahan add karo — sab rooms ki status ek jagah.
+            us PC ka URL + API key yahan add karo — sab rooms ki status ek jagah dikhegi.
           </p>
         </Card>
       ) : (
         <div className="space-y-2.5">
           {overview.map((room) => (
-            <div key={room.name} className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 space-y-2">
+            <div key={room.name} className="bg-white border border-slate-200/90 rounded-2xl p-3.5 space-y-2 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${room.live ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                  <span className="text-xs font-bold text-white truncate">Room {room.roomId || room.name}</span>
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${room.live ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                  <span className="text-xs font-bold text-slate-900 truncate">Room {room.roomId || room.name}</span>
                   <Pill tone={room.live ? 'emerald' : 'red'}>{room.live ? 'Live' : 'Down'}</Pill>
                 </div>
                 <button
                   onClick={() => onDeleteRoom(room.name)}
                   disabled={busy}
-                  className="p-1.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 active:scale-95 transition disabled:opacity-40 shrink-0"
+                  className="p-1.5 rounded-lg bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 active:scale-95 transition disabled:opacity-40 shrink-0 shadow-xs"
                   title={`Remove ${room.name}`}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -109,32 +109,32 @@ export function CenterScreen({ overview, busy, loading, onRefresh, onSaveRoom, o
               {room.live ? (
                 <>
                   <div className="grid grid-cols-4 gap-1.5 text-center text-[10px]">
-                    <div className="bg-slate-800/50 rounded-lg py-1.5">
-                      <p className="text-slate-400">Up</p>
-                      <p className="font-bold text-cyan-400">{room.uploading + room.pending}</p>
+                    <div className="bg-slate-50 border border-slate-100 rounded-lg py-1.5">
+                      <p className="text-slate-500">Up</p>
+                      <p className="font-bold text-cyan-700">{room.uploading + room.pending}</p>
                     </div>
-                    <div className="bg-slate-800/50 rounded-lg py-1.5">
-                      <p className="text-slate-400">Done</p>
-                      <p className="font-bold text-emerald-400">{room.uploaded}</p>
+                    <div className="bg-slate-50 border border-slate-100 rounded-lg py-1.5">
+                      <p className="text-slate-500">Done</p>
+                      <p className="font-bold text-emerald-700">{room.uploaded}</p>
                     </div>
-                    <div className="bg-slate-800/50 rounded-lg py-1.5">
-                      <p className="text-slate-400">Failed</p>
-                      <p className={`font-bold ${room.failed > 0 ? 'text-red-400' : 'text-slate-300'}`}>{room.failed}</p>
+                    <div className="bg-slate-50 border border-slate-100 rounded-lg py-1.5">
+                      <p className="text-slate-500">Failed</p>
+                      <p className={`font-bold ${room.failed > 0 ? 'text-red-600' : 'text-slate-700'}`}>{room.failed}</p>
                     </div>
-                    <div className="bg-slate-800/50 rounded-lg py-1.5">
-                      <p className="text-slate-400">Missing</p>
-                      <p className={`font-bold ${room.missingCount > 0 ? 'text-amber-400' : 'text-slate-300'}`}>{room.missingCount}</p>
+                    <div className="bg-slate-50 border border-slate-100 rounded-lg py-1.5">
+                      <p className="text-slate-500">Missing</p>
+                      <p className={`font-bold ${room.missingCount > 0 ? 'text-amber-600' : 'text-slate-700'}`}>{room.missingCount}</p>
                     </div>
                   </div>
                   {room.missingItems.map((m, idx) => (
-                    <p key={idx} className="text-[10px] text-amber-300/90 flex items-center gap-1 truncate">
-                      <AlertCircle className="w-3 h-3 shrink-0" />
+                    <p key={idx} className="text-[10px] text-amber-800 flex items-center gap-1 truncate">
+                      <AlertCircle className="w-3 h-3 shrink-0 text-amber-600" />
                       {m.time} · {m.batch} / {m.subject}
                     </p>
                   ))}
                 </>
               ) : (
-                <p className="text-[10px] text-red-300/80 flex items-center gap-1.5">
+                <p className="text-[10px] text-red-600 flex items-center gap-1.5">
                   <AlertCircle className="w-3 h-3 shrink-0" />
                   {room.error || 'Agent not reachable'}
                 </p>

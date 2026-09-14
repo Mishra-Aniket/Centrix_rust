@@ -10,7 +10,7 @@ import type {
   TimetableEntry,
   TimetableOverride,
 } from './types';
-import { getStoredAgentUrl, getStoredApiKey, notifyUnauthorized } from './config';
+import { getStoredAgentUrl, getStoredApiKey, getStoredSessionToken, notifyUnauthorized } from './config';
 
 export class ApiError extends Error {
   status: number;
@@ -29,6 +29,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   const apiKey = getStoredApiKey();
   if (apiKey) headers.set('X-Agent-Key', apiKey);
+  const sessionToken = getStoredSessionToken();
+  if (sessionToken) headers.set('X-Session', sessionToken);
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
 
   let res: Response;
@@ -40,7 +42,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (res.status === 401) {
     notifyUnauthorized();
-    throw new ApiError(401, 'API key rejected by agent');
+    throw new ApiError(401, 'Authentication required');
   }
 
   if (!res.ok) {
@@ -60,10 +62,33 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 /** Verifies credentials against the agent before storing them. */
 export async function testConnection(agentUrl: string, apiKey: string): Promise<AgentInfo> {
   const base = agentUrl.trim().replace(/\/+$/, '');
-  const res = await fetch(`${base}/api/agent/info`, { headers: { 'X-Agent-Key': apiKey } });
-  if (res.status === 401) throw new ApiError(401, 'API key rejected by agent');
+  const headers: Record<string, string> = {};
+  if (apiKey) headers['X-Agent-Key'] = apiKey;
+  const session = getStoredSessionToken();
+  if (session) headers['X-Session'] = session;
+  const res = await fetch(`${base}/api/agent/info`, { headers });
+  if (res.status === 401) throw new ApiError(401, 'Authentication rejected by agent');
   if (!res.ok) throw new ApiError(res.status, `Agent responded ${res.status} ${res.statusText}`);
   return (await res.json()) as AgentInfo;
+}
+
+export interface AuthConfig {
+  googleLoginEnabled: boolean;
+  emailsRegistered: boolean;
+  bootstrapMode: boolean;
+  domains: string[];
+}
+
+export async function fetchAuthConfig(): Promise<AuthConfig> {
+  return request<AuthConfig>('/api/auth/config');
+}
+
+export async function startGoogleLogin(): Promise<{ flowId: string; consentUrl: string; redirectUri: string }> {
+  return request('/api/auth/google/start', { method: 'POST', body: JSON.stringify({}) });
+}
+
+export async function pollGoogleLogin(flowId: string): Promise<{ status: string; sessionToken?: string; email?: string }> {
+  return request(`/api/auth/google/poll/${flowId}`);
 }
 
 // ---------- Read ----------

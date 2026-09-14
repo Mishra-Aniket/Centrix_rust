@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg ${className}`}>
+    <div className={`bg-white border border-slate-200/90 rounded-2xl p-4 shadow-sm ${className}`}>
       {children}
     </div>
   );
@@ -12,11 +12,11 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
 export type PillTone = 'cyan' | 'emerald' | 'amber' | 'red' | 'slate';
 
 const pillTones: Record<PillTone, string> = {
-  cyan: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
-  emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-  amber: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
-  red: 'bg-red-500/10 text-red-400 border-red-500/30',
-  slate: 'bg-slate-800 text-slate-300 border-slate-700',
+  cyan: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  amber: 'bg-amber-50 text-amber-700 border-amber-200',
+  red: 'bg-red-50 text-red-700 border-red-200',
+  slate: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
 export function Pill({ children, tone = 'slate', className = '' }: { children: ReactNode; tone?: PillTone; className?: string }) {
@@ -31,8 +31,8 @@ export function SectionHeader({ title, subtitle, right }: { title: string; subti
   return (
     <div className="flex items-center justify-between px-1">
       <div>
-        <h2 className="text-sm font-bold text-white">{title}</h2>
-        {subtitle && <p className="text-[11px] text-slate-400">{subtitle}</p>}
+        <h2 className="text-sm font-bold text-slate-900">{title}</h2>
+        {subtitle && <p className="text-[11px] text-slate-500">{subtitle}</p>}
       </div>
       {right}
     </div>
@@ -55,10 +55,10 @@ export function ActionButton({
   type?: 'button' | 'submit';
 }) {
   const tones: Record<string, string> = {
-    primary: 'bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300',
-    danger: 'bg-red-500/10 hover:bg-red-500/20 border border-red-500/40 text-red-300',
-    emerald: 'bg-emerald-600 hover:bg-emerald-500 border border-emerald-500 text-white shadow-md shadow-emerald-900/30',
-    slate: 'bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200',
+    primary: 'bg-cyan-600 hover:bg-cyan-700 text-white shadow-sm',
+    danger: 'bg-red-50 hover:bg-red-100 border border-red-200 text-red-700',
+    emerald: 'bg-emerald-600 hover:bg-emerald-700 border border-emerald-500 text-white shadow-sm',
+    slate: 'bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700',
   };
 
   return (
@@ -89,14 +89,14 @@ export function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-sm p-5 space-y-4 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-          <h3 className="font-bold text-sm text-white flex items-center gap-1.5">
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
+      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-sm p-5 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+          <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
             {icon}
             {title}
           </h3>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-white" aria-label="Close">
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -109,11 +109,11 @@ export function Modal({
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <label className="block text-slate-400 mb-1 text-xs">{label}</label>
+      <label className="block text-slate-600 mb-1 text-xs font-medium">{label}</label>
       {children}
     </div>
   );
 }
 
 export const inputClass =
-  'w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-medium focus:outline-none focus:border-cyan-500';
+  'w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-xs font-medium focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500';

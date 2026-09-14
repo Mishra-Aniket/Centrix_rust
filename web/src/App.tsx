@@ -352,49 +352,49 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   });
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#090d16] text-slate-100 font-sans pb-20 select-none">
+    <div className="flex flex-col min-h-screen bg-slate-50 text-slate-900 font-sans pb-20 select-none">
       {/* Toast */}
       {toast && (
         <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-center pointer-events-none">
-          <div className="bg-slate-900/95 border border-cyan-500/50 text-cyan-300 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-md text-sm font-medium">
+          <div className="bg-slate-900/95 text-white px-4 py-3 rounded-2xl shadow-xl backdrop-blur-md text-xs font-semibold">
             {toast}
           </div>
         </div>
       )}
 
       {/* Top Header */}
-      <header className="sticky top-0 z-30 bg-[#0c1220]/90 border-b border-slate-800/80 backdrop-blur-md px-4 py-3 flex items-center justify-between">
+      <header className="sticky top-0 z-30 bg-white/95 border-b border-slate-200/90 backdrop-blur-md px-4 py-3 flex items-center justify-between shadow-xs">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-black border border-white/10 flex items-center justify-center p-0.5 shadow-lg shadow-cyan-500/10">
-            <img src="/logo.png" alt="PW Logo" className="w-full h-full object-contain rounded" />
+          <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center p-1 shadow-xs">
+            <img src="/logo.png" alt="PW Logo" className="w-full h-full object-contain" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-base tracking-tight text-white">Centrix</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono">PW Ops</span>
+              <span className="font-bold text-base tracking-tight text-slate-900">Centrix</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-cyan-50 text-cyan-700 border border-cyan-200 font-semibold font-mono">PW Ops</span>
             </div>
-            <p className="text-[11px] text-slate-400">
-              Center: <strong className="text-slate-200">{agentInfo?.centerId || '...'}</strong>
+            <p className="text-[11px] text-slate-500">
+              Center: <strong className="text-slate-800">{agentInfo?.centerId || '...'}</strong>
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${
             health?.status === 'Healthy'
-              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-              : 'bg-red-500/10 border-red-500/30 text-red-300'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+              : 'bg-red-50 border-red-200 text-red-700'
           }`}>
-            <span className={`w-2 h-2 rounded-full ${health?.status === 'Healthy' ? 'bg-emerald-400 animate-ping' : 'bg-red-400'}`} />
+            <span className={`w-2 h-2 rounded-full ${health?.status === 'Healthy' ? 'bg-emerald-500 animate-ping' : 'bg-red-500'}`} />
             <span>{health?.status === 'Healthy' ? 'Agent Live' : 'Offline'}</span>
           </div>
           <button
             onClick={loadData}
             disabled={loading}
-            className="p-2 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-300 hover:text-white active:scale-95 transition"
+            className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 shadow-xs active:scale-95 transition"
             title="Refresh"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-400' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-600' : ''}`} />
           </button>
         </div>
       </header>
@@ -607,7 +607,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       </Modal>
 
       {/* Bottom Mobile Tab Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#0c1220]/95 border-t border-slate-800/80 backdrop-blur-lg px-3 py-2 flex items-center justify-around max-w-md mx-auto">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 border-t border-slate-200/90 backdrop-blur-lg px-3 py-2 flex items-center justify-around max-w-md mx-auto shadow-md">
         {([
           { id: 'live', icon: Radio, label: 'Live' },
           { id: 'review', icon: CheckCircle2, label: 'Review', badge: pendingReviews.length },
@@ -621,14 +621,14 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`relative flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition ${
-                active ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'
+              className={`relative flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition active:scale-95 ${
+                active ? 'text-cyan-600 font-bold' : 'text-slate-400 hover:text-slate-600'
               }`}
             >
               <Icon className="w-5 h-5" />
-              <span className="text-[10px] font-medium">{tab.label}</span>
+              <span className="text-[10px]">{tab.label}</span>
               {tab.badge ? (
-                <span className="absolute top-0 right-2 w-4 h-4 bg-amber-500 text-slate-950 font-bold text-[9px] rounded-full flex items-center justify-center">
+                <span className="absolute top-0 right-2 w-4 h-4 bg-amber-500 text-white font-bold text-[9px] rounded-full flex items-center justify-center shadow-xs">
                   {tab.badge}
                 </span>
               ) : null}

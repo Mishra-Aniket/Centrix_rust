@@ -1,16 +1,16 @@
-// Connection + auth settings for the agent. The API key is entered once on the
-// login screen and kept in localStorage; the agent URL is empty by default which
-// means "same origin" (the C# agent serves this app). Later, when the Firebase
-// cloud phase lands, only this module needs to change.
+// Connection + auth settings for Centrix.
+// Supports direct API key, PW Google session token, and 1-click local PC access.
 
 const API_KEY_STORAGE_KEY = 'lasrs.apiKey';
+const SESSION_TOKEN_STORAGE_KEY = 'lasrs.sessionToken';
 const AGENT_URL_STORAGE_KEY = 'lasrs.agentUrl';
+const LOCAL_ACCESS_KEY = 'lasrs.localAccess';
 
 type UnauthorizedListener = () => void;
 
 const unauthorizedListeners = new Set<UnauthorizedListener>();
 
-/** Registers a listener fired when the agent rejects the stored key (401). */
+/** Registers a listener fired when the agent rejects stored credentials (401). */
 export function onUnauthorized(listener: UnauthorizedListener): () => void {
   unauthorizedListeners.add(listener);
   return () => unauthorizedListeners.delete(listener);
@@ -21,7 +21,11 @@ export function notifyUnauthorized(): void {
 }
 
 export function isConfigured(): boolean {
-  return Boolean(localStorage.getItem(API_KEY_STORAGE_KEY));
+  return (
+    Boolean(localStorage.getItem(API_KEY_STORAGE_KEY)) ||
+    Boolean(localStorage.getItem(SESSION_TOKEN_STORAGE_KEY)) ||
+    localStorage.getItem(LOCAL_ACCESS_KEY) === 'true'
+  );
 }
 
 export function getStoredApiKey(): string | null {
@@ -29,11 +33,29 @@ export function getStoredApiKey(): string | null {
 }
 
 export function storeApiKey(key: string): void {
-  localStorage.setItem(API_KEY_STORAGE_KEY, key.trim());
+  if (key.trim()) {
+    localStorage.setItem(API_KEY_STORAGE_KEY, key.trim());
+  } else {
+    localStorage.removeItem(API_KEY_STORAGE_KEY);
+  }
 }
 
 export function clearApiKey(): void {
   localStorage.removeItem(API_KEY_STORAGE_KEY);
+  localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+  localStorage.removeItem(LOCAL_ACCESS_KEY);
+}
+
+export function getStoredSessionToken(): string | null {
+  return localStorage.getItem(SESSION_TOKEN_STORAGE_KEY);
+}
+
+export function storeSessionToken(token: string): void {
+  localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, token.trim());
+}
+
+export function setLocalAccess(): void {
+  localStorage.setItem(LOCAL_ACCESS_KEY, 'true');
 }
 
 /** Empty string means "same origin as this page". */
