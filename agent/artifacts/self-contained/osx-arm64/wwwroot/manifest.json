@@ -1,0 +1,17 @@
+{
+  "name": "Centrix - PW Lecture Operations",
+  "short_name": "Centrix",
+  "description": "Real-time PW lecture automation, matching and 1-tap review for center managers",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "500x500",
+      "type": "image/png"
+    }
+  ]
+}

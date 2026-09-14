@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   AlertCircle,
   Ban,
@@ -96,13 +97,16 @@ export function LiveScreen({
   const slot = currentSlot(timetable);
 
   // Strictly filter queue to last 24h or active transfers
-  const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
-  const feedItems = (snapshot?.queue ?? []).filter((q) => {
-    const isPendingOrUploading = q.status === 'Uploading' || q.status === 'Pending';
-    const isRecent = new Date(q.updatedAt).getTime() >= cutoff24h;
-    const matchesRoom = selectedRoom === 'ALL' || !selectedRoom || !q.roomId || q.roomId === selectedRoom;
-    return (isPendingOrUploading || isRecent) && matchesRoom;
-  });
+  const feedItems = useMemo(() => {
+    const baseTime = snapshot?.generatedAt ? new Date(snapshot.generatedAt).getTime() : 0;
+    const cutoff24h = baseTime > 0 ? baseTime - 24 * 60 * 60 * 1000 : 0;
+    return (snapshot?.queue ?? []).filter((q) => {
+      const isPendingOrUploading = q.status === 'Uploading' || q.status === 'Pending';
+      const isRecent = cutoff24h === 0 || new Date(q.updatedAt).getTime() >= cutoff24h;
+      const matchesRoom = selectedRoom === 'ALL' || !selectedRoom || !q.roomId || q.roomId === selectedRoom;
+      return (isPendingOrUploading || isRecent) && matchesRoom;
+    });
+  }, [snapshot, selectedRoom]);
 
   const isAllRooms = selectedRoom === 'ALL' || !selectedRoom;
 

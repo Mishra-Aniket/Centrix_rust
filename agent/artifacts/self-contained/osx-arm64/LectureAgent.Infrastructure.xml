@@ -1,0 +1,762 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>LectureAgent.Infrastructure</name>
+    </assembly>
+    <members>
+        <member name="T:LectureAgent.Infrastructure.Cloud.DriveFolderConfigurationException">
+            <summary>
+            Thrown when the upload cannot proceed because of a Drive configuration problem
+            (missing batch folder, ambiguous duplicate folder names, missing credentials).
+            Retrying cannot fix these — the user must fix the folder or the assignment — so
+            the upload worker marks the entry permanently failed instead of burning retries.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Cloud.FirebaseCloudSync">
+            <summary>
+            Prepares and synchronizes lecture metadata, review-queue items, device heartbeats,
+            and audit entries for cloud storage. Payload builder methods produce canonical
+            dictionary representations used for cloud sync and verified via unit tests.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Cloud.FirebaseCloudSync.BuildLectureDocument(LectureAgent.Domain.Entities.LectureSession)">
+            <summary>Static + pure so payload shapes are unit-testable without Firebase.</summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Cloud.GoogleDriveUploader.FindExistingFolderPathAsync(Google.Apis.Drive.v3.DriveService,System.String)">
+            <summary>
+            Finds an EXISTING folder by name (the last segment of the path, e.g. the batch
+            folder "27-AJ452NA 2026") across the account and shared drives. Folders are
+            pre-created by the center, so this never creates anything: if the folder is
+            missing it throws with a clear message instead of creating a duplicate tree.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Database.LectureContext">
+            <summary>
+            SQLite DbContext for the lecture agent.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Database.GenericRepository`1">
+            <summary>
+            Generic repository implementation for SQLite.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Database.LectureRepository">
+            <summary>
+            Repository for lectures.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Database.UploadQueueRepository">
+            <summary>
+            Repository for upload queue entries.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Database.TimetableRepository">
+            <summary>
+            Repository for timetable entries.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Database.AuditLogRepository">
+            <summary>
+            Repository for audit logs.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Database.ConfigRepository">
+            <summary>
+            Repository for configuration.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.FileProcessing.FileValidator">
+            <summary>
+            Validates files and extracts metadata.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.FileWatching.FileWatcher">
+            <summary>
+            Watches for video and PDF files in a folder.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.FileWatching.FileWatcher.IsRecentFile(System.String)">
+            <summary>
+            Only recent recordings should be uploaded (FileWatcher:MaxFileAgeHours, 0 = no limit).
+            A file dropped in later that was last written months ago is ignored.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Matching.ParsedFilename">
+            <summary>
+            Structured hints extracted from a recording file name.
+            </summary>
+        </member>
+        <member name="P:LectureAgent.Infrastructure.Matching.ParsedFilename.BatchCodes">
+            <summary>Batch codes like AJ251NA, LJ151MA found in the name.</summary>
+        </member>
+        <member name="P:LectureAgent.Infrastructure.Matching.ParsedFilename.Subjects">
+            <summary>Canonical subject names (physics, chemistry, ...) detected via keywords.</summary>
+        </member>
+        <member name="P:LectureAgent.Infrastructure.Matching.ParsedFilename.Dates">
+            <summary>Dates normalized to yyyy-MM-dd.</summary>
+        </member>
+        <member name="P:LectureAgent.Infrastructure.Matching.ParsedFilename.RoomNumbers">
+            <summary>Room numbers like "603" found as standalone tokens.</summary>
+        </member>
+        <member name="P:LectureAgent.Infrastructure.Matching.ParsedFilename.Tokens">
+            <summary>All lowercased word tokens (separators already split).</summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Matching.FilenameParser">
+            <summary>
+            Extracts batch codes, subject keywords, dates and room numbers from recording file
+            names so the matching engine gets real signals instead of a blind substring check.
+            Batch naming follows the PW tracker convention, e.g. "27-AJ251NA 2026 Physics.mp4".
+            Pure and static so it is trivially unit-testable.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.FilenameParser.BatchCodeRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>(?&lt;![A-Za-z0-9])([A-Za-z]{2}\\d{2,5}[A-Za-z]{2})(?![A-Za-z0-9])</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Zero-width negative lookbehind.<br/>
+                ○ Match a character in the set [0-9A-Za-z] right-to-left.<br/>
+            ○ 1st capture group.<br/>
+                ○ Match a character in the set [A-Za-z] exactly 2 times.<br/>
+                ○ Match a Unicode digit atomically at least 2 and at most 5 times.<br/>
+                ○ Match a character in the set [A-Za-z] exactly 2 times.<br/>
+            ○ Zero-width negative lookahead.<br/>
+                ○ Match a character in the set [0-9A-Za-z].<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.FilenameParser.IsoDateRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>(?&lt;!\\d)(20\\d{2})[.\\-_](\\d{1,2})[.\\-_](\\d{1,2})(?!\\d)</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Zero-width negative lookbehind.<br/>
+                ○ Match a Unicode digit right-to-left.<br/>
+            ○ 1st capture group.<br/>
+                ○ Match the string "20".<br/>
+                ○ Match a Unicode digit exactly 2 times.<br/>
+            ○ Match a character in the set [-._].<br/>
+            ○ 2nd capture group.<br/>
+                ○ Match a Unicode digit atomically at least 1 and at most 2 times.<br/>
+            ○ Match a character in the set [-._].<br/>
+            ○ 3rd capture group.<br/>
+                ○ Match a Unicode digit greedily at least 1 and at most 2 times.<br/>
+            ○ Zero-width negative lookahead.<br/>
+                ○ Match a Unicode digit.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.FilenameParser.DayFirstDateRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>(?&lt;!\\d)(\\d{1,2})[.\\-_](\\d{1,2})[.\\-_](20\\d{2})(?!\\d)</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Zero-width negative lookbehind.<br/>
+                ○ Match a Unicode digit right-to-left.<br/>
+            ○ 1st capture group.<br/>
+                ○ Match a Unicode digit atomically at least 1 and at most 2 times.<br/>
+            ○ Match a character in the set [-._].<br/>
+            ○ 2nd capture group.<br/>
+                ○ Match a Unicode digit atomically at least 1 and at most 2 times.<br/>
+            ○ Match a character in the set [-._].<br/>
+            ○ 3rd capture group.<br/>
+                ○ Match the string "20".<br/>
+                ○ Match a Unicode digit exactly 2 times.<br/>
+            ○ Zero-width negative lookahead.<br/>
+                ○ Match a Unicode digit.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.FilenameParser.CompactDateRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>(?&lt;!\\d)(20\\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])(?!\\d)</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Zero-width negative lookbehind.<br/>
+                ○ Match a Unicode digit right-to-left.<br/>
+            ○ 1st capture group.<br/>
+                ○ Match the string "20".<br/>
+                ○ Match a Unicode digit exactly 2 times.<br/>
+            ○ 2nd capture group.<br/>
+                ○ Match with 2 alternative expressions.<br/>
+                    ○ Match a sequence of expressions.<br/>
+                        ○ Match '0'.<br/>
+                        ○ Match a character in the set [1-9].<br/>
+                    ○ Match a sequence of expressions.<br/>
+                        ○ Match '1'.<br/>
+                        ○ Match a character in the set [0-2].<br/>
+            ○ 3rd capture group.<br/>
+                ○ Match with 3 alternative expressions.<br/>
+                    ○ Match a sequence of expressions.<br/>
+                        ○ Match '0'.<br/>
+                        ○ Match a character in the set [1-9].<br/>
+                    ○ Match a sequence of expressions.<br/>
+                        ○ Match a character in the set [12].<br/>
+                        ○ Match a Unicode digit.<br/>
+                    ○ Match a sequence of expressions.<br/>
+                        ○ Match '3'.<br/>
+                        ○ Match a character in the set [01].<br/>
+            ○ Zero-width negative lookahead.<br/>
+                ○ Match a Unicode digit.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.FilenameParser.MatchesBatch(LectureAgent.Infrastructure.Matching.ParsedFilename,System.String)">
+            <summary>
+            True when the file name points at the timetable slot's batch. Matching is
+            normalization-based: the code "AJ251NA" matches batch "27-AJ251NA 2026", and a
+            code-less batch like "BATCH-A" matches the same token sequence in the name.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.FilenameParser.MatchesSubject(LectureAgent.Infrastructure.Matching.ParsedFilename,System.String)">
+            <summary>
+            True when the file name's subject keywords align with the slot's subject.
+            Handles keyword aliases (maths → mathematics) and tolerant ids ("CHEM-101").
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.FilenameParser.Normalize(System.String)">
+            <summary>Lowercase with separators removed, for tolerant comparisons.</summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Matching.MatchingEngine">
+            <summary>
+            Implements the matching engine with confidence scoring.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Matching.PdfExtractedMetadata">
+            <summary>
+            Structured metadata extracted directly from the first page and metadata streams of a PDF.
+            Enables zero-error automatic matching even when the teacher names the file "notes.pdf" or "class.pdf".
+            </summary>
+        </member>
+        <member name="P:LectureAgent.Infrastructure.Matching.PdfExtractedMetadata.BatchCodes">
+            <summary>Batch codes like LJ152EA, 27-LJ152EA 2026 found inside the PDF text.</summary>
+        </member>
+        <member name="P:LectureAgent.Infrastructure.Matching.PdfExtractedMetadata.Subjects">
+            <summary>Canonical subject names (physics, chemistry, ...) detected inside the PDF text.</summary>
+        </member>
+        <member name="P:LectureAgent.Infrastructure.Matching.PdfExtractedMetadata.TeacherName">
+            <summary>Teacher name if indicated on the cover slide (e.g. "Krishna Sir").</summary>
+        </member>
+        <member name="P:LectureAgent.Infrastructure.Matching.PdfExtractedMetadata.ChapterName">
+            <summary>Chapter name if indicated on the cover slide (e.g. "Atomic Physics").</summary>
+        </member>
+        <member name="P:LectureAgent.Infrastructure.Matching.PdfExtractedMetadata.LectureNumber">
+            <summary>Lecture number (e.g. 1 for "Lecture No. 01").</summary>
+        </member>
+        <member name="P:LectureAgent.Infrastructure.Matching.PdfExtractedMetadata.RawText">
+            <summary>Raw cleaned text extracted from the first page/streams.</summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Matching.PdfTextExtractor">
+            <summary>
+            Lightweight, zero-dependency PDF text extractor built for .NET 8.
+            Scans PDF object streams, metadata dictionaries, and decompresses FlateDecode streams
+            using built-in ZLibStream to read cover slide text in milliseconds without altering files.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.PdfTextExtractor.BatchCodeRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>(?&lt;![A-Za-z0-9])([A-Za-z]{2}\\d{2,5}[A-Za-z]{2})(?![A-Za-z0-9])</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Zero-width negative lookbehind.<br/>
+                ○ Match a character in the set [0-9A-Za-z\u212A] right-to-left.<br/>
+            ○ 1st capture group.<br/>
+                ○ Match a character in the set [A-Za-z\u212A] exactly 2 times.<br/>
+                ○ Match a Unicode digit atomically at least 2 and at most 5 times.<br/>
+                ○ Match a character in the set [A-Za-z\u212A] exactly 2 times.<br/>
+            ○ Zero-width negative lookahead.<br/>
+                ○ Match a character in the set [0-9A-Za-z\u212A].<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.PdfTextExtractor.FullBatchCodeRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>(?&lt;![A-Za-z0-9])(\\d{1,3}-[A-Za-z]{2}\\d{2,5}[A-Za-z]{2}(?:\\s+\\d{4})?)(?![A-Za-z0-9])</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Zero-width negative lookbehind.<br/>
+                ○ Match a character in the set [0-9A-Za-z\u212A] right-to-left.<br/>
+            ○ 1st capture group.<br/>
+                ○ Match a Unicode digit atomically at least 1 and at most 3 times.<br/>
+                ○ Match '-'.<br/>
+                ○ Match a character in the set [A-Za-z\u212A] exactly 2 times.<br/>
+                ○ Match a Unicode digit atomically at least 2 and at most 5 times.<br/>
+                ○ Match a character in the set [A-Za-z\u212A] exactly 2 times.<br/>
+                ○ Optional (greedy).<br/>
+                    ○ Match a whitespace character atomically at least once.<br/>
+                    ○ Match a Unicode digit exactly 4 times.<br/>
+            ○ Zero-width negative lookahead.<br/>
+                ○ Match a character in the set [0-9A-Za-z\u212A].<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.PdfTextExtractor.BatchCodeLabelRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>BATCH\\s*(?:CODE)?\\s*[:=\\-]\\s*([A-Za-z0-9\\-\\s]{4,30})</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match a character in the set [Bb].<br/>
+            ○ Match a character in the set [Aa].<br/>
+            ○ Match a character in the set [Tt].<br/>
+            ○ Match a character in the set [Cc].<br/>
+            ○ Match a character in the set [Hh].<br/>
+            ○ Match a whitespace character greedily any number of times.<br/>
+            ○ Optional (greedy).<br/>
+                ○ Match a character in the set [Cc].<br/>
+                ○ Match a character in the set [Oo].<br/>
+                ○ Match a character in the set [Dd].<br/>
+                ○ Match a character in the set [Ee].<br/>
+            ○ Match a whitespace character atomically any number of times.<br/>
+            ○ Match a character in the set [-:=].<br/>
+            ○ Match a whitespace character greedily any number of times.<br/>
+            ○ 1st capture group.<br/>
+                ○ Match a character in the set [-0-9A-Za-z\u212A\s] atomically at least 4 and at most 30 times.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.PdfTextExtractor.LectureNumberRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>Lecture\\s*(?:No\\.?)?\\s*[:=\\-]?\\s*(0?[1-9]\\d?)</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match a character in the set [Ll].<br/>
+            ○ Match a character in the set [Ee].<br/>
+            ○ Match a character in the set [Cc].<br/>
+            ○ Match a character in the set [Tt].<br/>
+            ○ Match a character in the set [Uu].<br/>
+            ○ Match a character in the set [Rr].<br/>
+            ○ Match a character in the set [Ee].<br/>
+            ○ Match a whitespace character greedily any number of times.<br/>
+            ○ Optional (greedy).<br/>
+                ○ Match a character in the set [Nn].<br/>
+                ○ Match a character in the set [Oo].<br/>
+                ○ Match '.' atomically, optionally.<br/>
+            ○ Match a whitespace character greedily any number of times.<br/>
+            ○ Match a character in the set [-:=] atomically, optionally.<br/>
+            ○ Match a whitespace character atomically any number of times.<br/>
+            ○ 1st capture group.<br/>
+                ○ Match '0' atomically, optionally.<br/>
+                ○ Match a character in the set [1-9].<br/>
+                ○ Match a Unicode digit atomically, optionally.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.PdfTextExtractor.MatchesBatch(LectureAgent.Infrastructure.Matching.PdfExtractedMetadata,System.String)">
+            <summary>
+            Checks if extracted PDF metadata points to the timetable slot's batch.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.PdfTextExtractor.MatchesSubject(LectureAgent.Infrastructure.Matching.PdfExtractedMetadata,System.String)">
+            <summary>
+            Checks if extracted PDF metadata points to the timetable slot's subject.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.PdfTextExtractor.MatchesTeacher(LectureAgent.Infrastructure.Matching.PdfExtractedMetadata,System.String)">
+            <summary>
+            Checks if extracted PDF teacher matches slot teacher.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.PdfTextExtractor.Extract(System.String,System.Int32)">
+            <summary>
+            Extracts text and metadata hints from the first page of a PDF file.
+            Safely handles file locks, stream compression, and malformed files.
+            Reads at most maxBytes (default 512 KB) so it is instantaneous.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.PdfTextExtractor.ExtractDecompressedStreams(System.Byte[],System.Text.StringBuilder)">
+            <summary>
+            Finds stream ... endstream blocks in PDF data and decompresses FlateDecode streams.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Matching.PdfTextExtractor.ExtractPdfTextTokens(System.String,System.Text.StringBuilder)">
+            <summary>
+            Parses PDF content stream operators like (Text) Tj, [(Part1) 10 (Part2)] TJ, and &lt;Hex&gt; Tj.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Notifications.NotificationMessages">
+            <summary>
+            Builds human-readable titles/bodies for each notification event. Static and pure
+            so message formatting is unit-testable and consistent across channels.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Notifications.NotificationEventSettings">
+            <summary>
+            Which events produce notifications. Lets a center silence noisy events without
+            touching code.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Notifications.CompositeNotificationService">
+            <summary>
+            Sends each notification to every enabled channel. A failing channel is logged and
+            skipped; one broken webhook must never stop the email channel (or the agent).
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Notifications.LogNotificationService">
+            <summary>
+            No-op fallback when no channel is configured: events still reach the log file,
+            which is what operators read when something looks off anyway.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Notifications.WebhookNotificationService">
+            <summary>
+            HTTP webhook channel. Style "Generic" posts a JSON envelope; "Discord" and "Slack"
+            post the payload shape those platforms expect, so a center can point this at a
+            Discord channel, Slack incoming webhook, or any n8n/Zapier/WhatsApp bridge.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Notifications.EmailNotificationService">
+            <summary>
+            SMTP email channel. Uses the built-in SmtpClient; credentials can reference the
+            protected-credential file written by CredentialProtector (Notifications:Email:Password).
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Notifications.NotificationServiceFactory">
+            <summary>
+            Builds the INotificationService the agent actually uses from configuration:
+            a composite of every enabled channel, or the log-only fallback.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Security.ICredentialProtector">
+            <summary>
+            Reads (and creates) protected copies of credential files so secrets are never
+            stored as plain text at rest. Convention: for credentials at path P, the protected
+            form lives at P + ".protected"; OpenRead(P) transparently resolves either.
+            Windows uses DPAPI (machine scope, so both the LocalSystem service and the
+            desktop app can decrypt). macOS/Linux have no in-box DPAPI equivalent, so the
+            protected file is written with owner-only permissions (0600) instead.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Security.ICredentialProtector.OpenRead(System.String)">
+            <summary>Opens the credential file for reading, decrypting a .protected file if present.</summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Security.ICredentialProtector.ProtectInPlace(System.String)">
+            <summary>
+            If a plain-text credential file exists and no protected copy does, writes the
+            protected copy, verifies it round-trips, then deletes the plain-text file.
+            Safe to call on every startup.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Timetable.GoogleSheetTimetableSyncService.ParseCsv(System.String)">
+            <summary>
+            Robust RFC 4180 CSV parser handling escaped quotes and commas within quotes.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Infrastructure.Tracker.TrackerMappingSyncService">
+            <summary>
+            Fetches the live room-to-batch mapping from the PW Center Tracker backend
+            (the same data shown in pw-center-tracker.betterpw.live). The endpoint is
+            public and reflects tracker edits immediately, so the agent can follow
+            mapping changes without anyone touching a spreadsheet.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Tracker.TrackerMappingSyncService.GetBatchToRoomAsync(System.String,System.Threading.CancellationToken)">
+            <summary>
+            Returns batchName -> roomId for the given center, e.g. "27-AJ251NA 2026" -> "603".
+            Rooms can host several batches; every batch of the center is included.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Infrastructure.Tracker.TrackerMappingSyncService.ParseMapping(System.String)">
+            <summary>
+            Parses the /sheets/all response shape:
+            { data: [ { center, rooms: [ { room, batches: [ {}, { batchName, batchId }, ... ] } ] } ] }
+            Empty batch placeholders ({} sent by the API as row separators) are skipped.
+            </summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.BatchCodeRegex_0">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the BatchCodeRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.BatchCodeRegex_0.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeRegex_0.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.BatchCodeRegex_0.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeRegex_0.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.BatchCodeRegex_0.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeRegex_0.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeRegex_0.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeRegex_0.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.IsoDateRegex_1">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the IsoDateRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.IsoDateRegex_1.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.IsoDateRegex_1.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.IsoDateRegex_1.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.IsoDateRegex_1.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.IsoDateRegex_1.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.IsoDateRegex_1.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.IsoDateRegex_1.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.IsoDateRegex_1.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.DayFirstDateRegex_2">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the DayFirstDateRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.DayFirstDateRegex_2.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.DayFirstDateRegex_2.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.DayFirstDateRegex_2.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.DayFirstDateRegex_2.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.DayFirstDateRegex_2.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.DayFirstDateRegex_2.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.DayFirstDateRegex_2.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.DayFirstDateRegex_2.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.CompactDateRegex_3">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the CompactDateRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.CompactDateRegex_3.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.CompactDateRegex_3.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.CompactDateRegex_3.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.CompactDateRegex_3.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.CompactDateRegex_3.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.CompactDateRegex_3.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.CompactDateRegex_3.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.CompactDateRegex_3.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.BatchCodeRegex_4">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the BatchCodeRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.BatchCodeRegex_4.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeRegex_4.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.BatchCodeRegex_4.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeRegex_4.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.BatchCodeRegex_4.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeRegex_4.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeRegex_4.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeRegex_4.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.FullBatchCodeRegex_5">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the FullBatchCodeRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.FullBatchCodeRegex_5.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.FullBatchCodeRegex_5.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.FullBatchCodeRegex_5.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.FullBatchCodeRegex_5.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.FullBatchCodeRegex_5.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.FullBatchCodeRegex_5.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.FullBatchCodeRegex_5.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.FullBatchCodeRegex_5.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.BatchCodeLabelRegex_6">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the BatchCodeLabelRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.BatchCodeLabelRegex_6.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeLabelRegex_6.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.BatchCodeLabelRegex_6.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeLabelRegex_6.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.BatchCodeLabelRegex_6.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeLabelRegex_6.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeLabelRegex_6.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.BatchCodeLabelRegex_6.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.LectureNumberRegex_7">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the LectureNumberRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.LectureNumberRegex_7.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.LectureNumberRegex_7.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.LectureNumberRegex_7.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.LectureNumberRegex_7.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.LectureNumberRegex_7.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.LectureNumberRegex_7.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.LectureNumberRegex_7.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.LectureNumberRegex_7.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Utilities">
+            <summary>Helper methods used by generated <see cref="T:System.Text.RegularExpressions.Regex"/>-derived implementations.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_defaultTimeout">
+            <summary>Default timeout value set in <see cref="T:System.AppContext"/>, or <see cref="F:System.Text.RegularExpressions.Regex.InfiniteMatchTimeout"/> if none was set.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_hasTimeout">
+            <summary>Whether <see cref="F:System.Text.RegularExpressions.Generated.Utilities.s_defaultTimeout"/> is non-infinite.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.IndexOfAnyDigit(System.ReadOnlySpan{System.Char})">
+            <summary>Finds the next index of any character that matches a Unicode digit.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.StackPush(System.Int32[]@,System.Int32@,System.Int32,System.Int32)">
+            <summary>Pushes 2 values onto the backtracking stack.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_asciiExceptDigits">
+            <summary>Supports searching for characters in or not in "\0\u0001\u0002\u0003\u0004\u0005\u0006\a\b\t\n\v\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f !\"#$%&amp;'()*+,-./:;&lt;=&gt;?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\u007f".</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_asciiLetters">
+            <summary>Supports searching for characters in or not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_nonAscii_326E1FD0AD567A84CAD13F2BE521A57789829F59D59ABE37F9E111D0182B6601">
+            <summary>Supports searching for characters in or not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzK".</summary>
+        </member>
+    </members>
+</doc>

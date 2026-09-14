@@ -1,0 +1,103 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>LectureAgent.Application</name>
+    </assembly>
+    <members>
+        <member name="T:LectureAgent.Application.Services.LectureSessionService">
+            <summary>
+            Service for managing lecture session lifecycle.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.LectureSessionService.CreateSessionAsync(System.String,System.String,System.String,System.String,System.String,System.Int64,System.DateTime,System.DateTime)">
+            <summary>
+            Creates a new lecture session from detected file.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.LectureSessionService.ConfirmAssignmentAsync(System.String,System.String,System.String,System.String,System.String)">
+            <summary>
+            Confirms a lecture assignment.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.LectureSessionService.GetPendingReviewAsync(System.String)">
+            <summary>
+            Gets lectures pending review for a center.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.LectureSessionService.UpdateStatusAsync(System.String,LectureAgent.Domain.Enums.LectureStatus,System.String)">
+            <summary>
+            Updates lecture status.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Application.Services.MatchingService">
+            <summary>
+            Service for matching lectures to timetable slots.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.MatchingService.AnalyzeAndAssignAsync(LectureAgent.Domain.Entities.LectureSession)">
+            <summary>
+            Analyzes a lecture and determines if it should be auto-assigned.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Application.Services.UploadQueueService">
+            <summary>
+            Service for managing upload queue.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.UploadQueueService.EnqueueFileAsync(System.String,System.String,System.String,System.Int64,System.String,System.String)">
+            <summary>
+            Adds a file to the upload queue.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.UploadQueueService.GetPendingUploadsAsync(System.Int32)">
+            <summary>
+            Gets pending uploads directly via optimized SQL query.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.UploadQueueService.RetryAsync(System.String)">
+            <summary>
+            Resets an upload queue entry so the background processor picks it up again,
+            including entries that exhausted their retries.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.UploadQueueService.CancelAsync(System.String)">
+            <summary>
+            Marks an upload queue entry as cancelled so it is never picked up again.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.UploadQueueService.RetryAllFailedAsync">
+            <summary>
+            Resets every failed entry (including permanently failed) back to pending.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Application.Services.TimetableSyncService">
+            <summary>
+            Service for timetable synchronization.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.TimetableSyncService.SyncTimetableAsync(System.String)">
+            <summary>
+            Syncs timetable from cloud to local cache.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Application.Services.MissingLectureDetector">
+            <summary>
+            Compares the day's timetable against detected recordings and reports slots
+            that finished without any recording, so a missing lecture is surfaced the
+            same day instead of being discovered days later.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Application.Services.MissingSlotInfo">
+            <summary>
+            One timetable slot that finished without a matching recording.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Application.Services.DuplicateSlotChecker">
+            <summary>
+            "Already scheduled" style guard (borrowed from PW's studio tracker): when a new
+            recording matches a slot that already has an accepted lecture, the new file is
+            flagged as a duplicate instead of silently uploading a second copy.
+            </summary>
+        </member>
+    </members>
+</doc>
