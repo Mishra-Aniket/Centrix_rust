@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net8.0 builds a runnable-on-any-OS test flavor; net8.0-windows is the shipped
+         WinExe (no console window). Publish with: -f net8.0-windows -->
+    <TargetFrameworks>net8.0;net8.0-windows</TargetFrameworks>
+    <OutputType Condition="'$(TargetFramework)' == 'net8.0-windows'">WinExe</OutputType>
+    <OutputType Condition="'$(TargetFramework)' != 'net8.0-windows'">Exe</OutputType>
+    <UseWindowsForms Condition="'$(TargetFramework)' == 'net8.0-windows'">true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>LectureAgent-Setup</AssemblyName>
+    <RootNamespace>LectureAgent.Setup</RootNamespace>
+    <ApplicationIcon>setup.ico</ApplicationIcon>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Produced by installer/build-setup.sh from installer/stage (agent + app). -->
+    <EmbeddedResource Include="payload.zip" />
+  </ItemGroup>
+
+</Project>

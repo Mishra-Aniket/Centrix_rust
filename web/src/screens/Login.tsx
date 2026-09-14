@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyRound, Radio, Loader2, Wifi } from 'lucide-react';
+import { KeyRound, Loader2, Wifi } from 'lucide-react';
 import { ApiError, testConnection } from '../api';
 import { getStoredAgentUrl, storeAgentUrl, storeApiKey } from '../config';
 import { Field, inputClass } from '../ui';
@@ -33,13 +33,13 @@ export function LoginScreen({ onConnected }: { onConnected: () => void }) {
     <div className="flex flex-col min-h-screen bg-[#090d16] text-slate-100 font-sans select-none">
       <div className="flex-1 flex flex-col justify-center max-w-md w-full mx-auto p-6 space-y-6">
         <div className="flex flex-col items-center text-center space-y-3">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-            <Radio className="w-7 h-7 text-white" />
+          <div className="w-16 h-16 rounded-2xl bg-black border border-white/10 flex items-center justify-center p-1.5 shadow-xl shadow-cyan-500/10">
+            <img src="/logo.png" alt="PW Logo" className="w-full h-full object-contain rounded-xl" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white">LASRS Mobile</h1>
+            <h1 className="text-xl font-bold text-white tracking-tight">Centrix</h1>
             <p className="text-xs text-slate-400 mt-1">
-              Connect to the lecture agent running on your PC
+              PW Vidyapeeth Lecture Operations & Sync
             </p>
           </div>
         </div>

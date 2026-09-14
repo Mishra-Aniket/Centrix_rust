@@ -1,0 +1,52 @@
+# GitLab CI — mirrors .github/workflows/ci.yml (repo lives on GitLab).
+# Two jobs: .NET agent build+test, React dashboard build.
+
+stages:
+  - build
+  - test
+
+variables:
+  NUGET_PACKAGES: $CI_PROJECT_DIR/.nuget/packages
+
+agent-build:
+  stage: build
+  image: mcr.microsoft.com/dotnet/sdk:8.0
+  script:
+    - dotnet restore agent/LectureAgent.sln
+    - dotnet build agent/LectureAgent.sln -c Release --no-restore
+  cache:
+    key: nuget-$CI_COMMIT_REF_SLUG
+    paths:
+      - .nuget/
+
+agent-test:
+  stage: test
+  image: mcr.microsoft.com/dotnet/sdk:8.0
+  script:
+    - dotnet test agent/tests/LectureAgent.Tests/LectureAgent.Tests.csproj -c Release --no-restore --logger "trx;LogFileName=agent-tests.trx"
+  cache:
+    key: nuget-$CI_COMMIT_REF_SLUG
+    paths:
+      - .nuget/
+  artifacts:
+    when: always
+    paths:
+      - agent/tests/TestResults/agent-tests.trx
+    expire_in: 1 week
+
+web-build:
+  stage: build
+  image: node:20
+  script:
+    - cd web
+    - npm ci
+    - npm run lint
+    - npm run build
+  cache:
+    key: npm-$CI_COMMIT_REF_SLUG
+    paths:
+      - web/.npm/
+  artifacts:
+    paths:
+      - web/dist/
+    expire_in: 1 week

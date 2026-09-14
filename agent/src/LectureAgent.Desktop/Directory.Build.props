@@ -1,0 +1,13 @@
+<Project>
+  <!--
+    Deliberately does not import the agent's Directory.Build.props: this project targets
+    net8.0-windows and must not inherit the agent's EF Core / Google / Serilog package set.
+  -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Authors>LASRS Team</Authors>
+  </PropertyGroup>
+</Project>

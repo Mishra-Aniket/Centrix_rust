@@ -365,13 +365,13 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       {/* Top Header */}
       <header className="sticky top-0 z-30 bg-[#0c1220]/90 border-b border-slate-800/80 backdrop-blur-md px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-            <Radio className="w-4 h-4 text-white animate-pulse" />
+          <div className="w-8 h-8 rounded-lg bg-black border border-white/10 flex items-center justify-center p-0.5 shadow-lg shadow-cyan-500/10">
+            <img src="/logo.png" alt="PW Logo" className="w-full h-full object-contain rounded" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-base tracking-tight text-white">LASRS Mobile</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono">PWA</span>
+              <span className="font-bold text-base tracking-tight text-white">Centrix</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono">PW Ops</span>
             </div>
             <p className="text-[11px] text-slate-400">
               Center: <strong className="text-slate-200">{agentInfo?.centerId || '...'}</strong>

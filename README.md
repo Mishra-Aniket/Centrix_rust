@@ -1,6 +1,6 @@
-# Lecture Automation & Smart Review System (LASRS)
+# Centrix — Autonomous PW Lecture Operations & Storage Sync
 
-A cross-platform system for automated lecture recording detection, metadata assignment, and distributed review across 500+ educational centers.
+A robust edge-first platform for automated lecture recording detection, smart PDF/Video pairing, timetable-based routing, and 1-tap review across PhysicsWallah Vidyapeeth centers.
 
 ## Project Vision
 

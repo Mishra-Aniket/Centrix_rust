@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  agent:
+    name: Agent — build & test (.NET)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore agent/LectureAgent.sln
+
+      - name: Build
+        run: dotnet build agent/LectureAgent.sln -c Release --no-restore
+
+      - name: Test
+        run: >
+          dotnet test agent/tests/LectureAgent.Tests/LectureAgent.Tests.csproj
+          -c Release --no-build
+          --logger "trx;LogFileName=agent-tests.trx"
+          --results-directory ./test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-test-results
+          path: test-results/*.trx
+          if-no-files-found: ignore
+
+  web:
+    name: Dashboard — build (React)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build (typecheck + vite)
+        run: npm run build
+
+      - name: Upload dashboard build
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-dist
+          path: web/dist/
+          if-no-files-found: ignore

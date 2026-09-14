@@ -1,0 +1,46 @@
+# .NET Build artifacts
+bin/
+obj/
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+.dotnet/
+
+# Node / Web Build artifacts
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+
+# SQLite Databases & Local Storage
+*.db
+*.db-*
+data/*.db
+data/*.db-*
+**/data/*.db
+**/data/*.db-*
+logs/
+**/logs/
+*.log
+
+# Local Google Drive tokens
+data/google-drive-token/
+**/data/google-drive-token/
+
+# OS files
+.DS_Store
+Thumbs.db
+agent/.local/
+agent/Library/
+**/.nuget/
+vibe_images/
+
+# Installer build stages & large binaries (>100MB)
+installer/output/
+installer/stage/
+*.zip
+*.exe
+*.msi
+**/payload.zip
