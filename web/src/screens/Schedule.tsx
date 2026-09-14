@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Undo2,
 } from 'lucide-react';
+import { RoomSelector } from '../components/RoomSelector';
 import type { TimetableEntry, TimetableOverride, TimetableSummary } from '../types';
 
 interface ScheduleScreenProps {
@@ -186,10 +187,20 @@ export function ScheduleScreen({
     }
   };
 
-  // Filter available dates that are different from currently selected date
-  const otherScheduledDates = availableDates
-    .filter((d) => d !== selectedDate)
-    .slice(0, 5);
+  // Filter available dates that are within this week (never old past dates like Aug 31)
+  const currentWeekScheduledDates = useMemo(() => {
+    const weekDateSet = new Set(weekDays.map((w) => w.dateStr));
+    return availableDates.filter((d) => weekDateSet.has(d) && d !== selectedDate);
+  }, [availableDates, weekDays, selectedDate]);
+
+  // Next active day this week or upcoming
+  const nextActiveDay = useMemo(() => {
+    return (
+      currentWeekScheduledDates.find((d) => d > selectedDate) ||
+      availableDates.find((d) => d >= todayStr && d !== selectedDate) ||
+      currentWeekScheduledDates[0]
+    );
+  }, [currentWeekScheduledDates, availableDates, selectedDate, todayStr]);
 
   return (
     <div className="space-y-3.5">
@@ -315,7 +326,7 @@ export function ScheduleScreen({
           })}
         </div>
 
-        {/* Quick Date Presets & Scheduled Dates */}
+        {/* Quick Date Presets & Active Days in this Week */}
         <div className="flex items-center gap-1.5 pt-1 overflow-x-auto no-scrollbar">
           <button
             onClick={() => onSelectDate(todayStr)}
@@ -328,73 +339,19 @@ export function ScheduleScreen({
             Go to Today
           </button>
 
-          {/* Quick jump pills to dates that have data */}
-          {otherScheduledDates.map((dateStr) => (
-            <button
-              key={dateStr}
-              onClick={() => onSelectDate(dateStr)}
-              className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-slate-100 hover:bg-slate-200/80 text-slate-700 transition active:scale-95 shrink-0 flex items-center gap-1"
-            >
-              <Calendar className="w-3 h-3 text-slate-400" />
-              <span>{formatShortDate(dateStr)}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Room Selector Chips */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between px-1">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            Select Classroom Room
-          </span>
-          <span className="text-[10px] text-slate-400">
-            {rooms.length} room{rooms.length !== 1 ? 's' : ''} available
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <button
-            onClick={() => onSelectRoom('ALL')}
-            className={`px-3 py-1.5 text-xs rounded-xl font-semibold border transition active:scale-95 flex items-center gap-1.5 ${
-              selectedRoom === 'ALL' || !selectedRoom
-                ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
-                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 shadow-xs'
-            }`}
-          >
-            <span>All Rooms</span>
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                selectedRoom === 'ALL' || !selectedRoom
-                  ? 'bg-violet-700 text-white'
-                  : 'bg-slate-100 text-slate-600'
-              }`}
-            >
-              {timetableSummary?.totalLectures ?? timetable.length}
-            </span>
-          </button>
-
-          {rooms.map((room) => {
-            const isSelected = selectedRoom === room;
-            const count = timetableSummary?.roomCounts[room];
+          {/* Jump pills to active days in this week only */}
+          {currentWeekScheduledDates.map((dateStr) => {
+            const count = timetableSummary?.dayCounts[dateStr];
             return (
               <button
-                key={room}
-                onClick={() => onSelectRoom(room)}
-                className={`px-3 py-1.5 text-xs rounded-xl font-semibold border transition active:scale-95 flex items-center gap-1.5 ${
-                  isSelected
-                    ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 shadow-xs'
-                }`}
+                key={dateStr}
+                onClick={() => onSelectDate(dateStr)}
+                className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-slate-100 hover:bg-slate-200/80 text-slate-700 transition active:scale-95 shrink-0 flex items-center gap-1.5"
               >
-                <span>Room {room}</span>
+                <Calendar className="w-3 h-3 text-slate-400" />
+                <span>{formatShortDate(dateStr)}</span>
                 {count !== undefined && count > 0 && (
-                  <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                      isSelected
-                        ? 'bg-violet-700 text-white'
-                        : 'bg-violet-50 text-violet-700 border border-violet-200'
-                    }`}
-                  >
+                  <span className="text-[9px] px-1 rounded-full bg-slate-200 text-slate-700 font-mono">
                     {count}
                   </span>
                 )}
@@ -403,6 +360,15 @@ export function ScheduleScreen({
           })}
         </div>
       </div>
+
+      {/* Room Selector Dropdown */}
+      <RoomSelector
+        rooms={rooms}
+        selectedRoom={selectedRoom}
+        onSelectRoom={onSelectRoom}
+        roomCounts={timetableSummary?.roomCounts}
+        totalCount={timetableSummary?.totalLectures ?? timetable.length}
+      />
 
       {/* Add Extra Slot Button */}
       <button
@@ -471,22 +437,46 @@ export function ScheduleScreen({
               </p>
             </div>
 
-            {/* Jump chips for other dates that have lectures */}
-            {availableDates.length > 0 && (
+            {/* Quick jump to active classes this week */}
+            {nextActiveDay && (
+              <div className="pt-1">
+                <button
+                  onClick={() => onSelectDate(nextActiveDay)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-semibold shadow-xs transition active:scale-95"
+                >
+                  <span>View Next Class: {formatDisplayDate(nextActiveDay)}</span>
+                  {timetableSummary?.dayCounts[nextActiveDay] && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-cyan-700 text-[10px]">
+                      {timetableSummary.dayCounts[nextActiveDay]} slots
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {currentWeekScheduledDates.length > 0 && (
               <div className="pt-2 border-t border-slate-100">
                 <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                  Jump to dates with scheduled classes:
+                  Other scheduled days this week:
                 </p>
                 <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                  {availableDates.slice(0, 4).map((d) => (
-                    <button
-                      key={d}
-                      onClick={() => onSelectDate(d)}
-                      className="px-2.5 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-700 text-[11px] font-semibold transition active:scale-95"
-                    >
-                      {formatDisplayDate(d)}
-                    </button>
-                  ))}
+                  {currentWeekScheduledDates.map((d) => {
+                    const count = timetableSummary?.dayCounts[d];
+                    return (
+                      <button
+                        key={d}
+                        onClick={() => onSelectDate(d)}
+                        className="px-2.5 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-700 text-[11px] font-semibold transition active:scale-95 flex items-center gap-1.5"
+                      >
+                        <span>{formatDisplayDate(d)}</span>
+                        {count !== undefined && count > 0 && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-cyan-200/70 text-cyan-800 font-mono">
+                            {count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}

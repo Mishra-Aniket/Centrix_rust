@@ -152,11 +152,32 @@ public class UploadProcessingService : BackgroundService
                     entry.UpdatedAt = DateTime.UtcNow;
                     await queueService.SaveAsync(entry);
 
-                    // Update lecture status
-                    await lectureService.UpdateStatusAsync(
-                        entry.LectureSessionId,
-                        LectureStatus.Uploaded,
-                        "File successfully uploaded to Google Drive");
+                    // Update lecture status and Drive File ID
+                    var lectureRepo = scope.ServiceProvider.GetService<ILectureRepository>();
+                    if (lectureRepo != null)
+                    {
+                        var session = await lectureRepo.GetByIdAsync(entry.LectureSessionId);
+                        if (session != null)
+                        {
+                            if (entry.FileType.Equals("PDF", StringComparison.OrdinalIgnoreCase))
+                                session.DrivePdfFileId = fileId;
+                            else
+                                session.DriveVideoFileId = fileId;
+
+                            session.Status = LectureStatus.Uploaded;
+                            session.ReviewStatus = ReviewStatus.Approved;
+                            session.UpdatedAt = DateTime.UtcNow;
+                            await lectureRepo.UpdateAsync(session);
+                            await lectureRepo.SaveChangesAsync();
+                        }
+                    }
+                    else
+                    {
+                        await lectureService.UpdateStatusAsync(
+                            entry.LectureSessionId,
+                            LectureStatus.Uploaded,
+                            "File successfully uploaded to Google Drive");
+                    }
 
                     await auditLogger.LogAsync(
                         "UPLOAD_QUEUE", entry.QueueEntryId, "UPLOAD_COMPLETED", null,

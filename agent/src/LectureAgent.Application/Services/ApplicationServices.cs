@@ -282,19 +282,44 @@ public class UploadQueueService
         string localFilePath,
         long fileSizeBytes,
         string? fileHash,
-        string? driveFolderPath = null)
+        string? driveFolderPath = null,
+        bool allowDuplicate = false)
     {
         // Content-level duplicate guard: the same recording saved under a different
-        // file name must never upload twice. Checked at enqueue time (upload time).
-        if (!string.IsNullOrWhiteSpace(fileHash))
+        // file name must never upload twice to the same folder unless explicitly requested.
+        if (!allowDuplicate && !string.IsNullOrWhiteSpace(fileHash))
         {
             var existing = await _queueRepository.GetActiveByFileHashAsync(fileHash);
             if (existing != null)
             {
-                _logger.LogWarning(
-                    $"Duplicate content rejected for {lectureSessionId}: identical file hash already " +
-                    $"{existing.Status} as {existing.QueueEntryId}. Not enqueueing again.");
-                return null;
+                // If it's already in the same target folder (or no specific target folder was given)
+                bool sameFolder = string.IsNullOrWhiteSpace(driveFolderPath) 
+                    || string.Equals(existing.DriveFolderPath, driveFolderPath, StringComparison.OrdinalIgnoreCase);
+
+                if (sameFolder)
+                {
+                    if (existing.Status == UploadStatus.Uploaded && !string.IsNullOrWhiteSpace(existing.DriveFileId))
+                    {
+                        var session = await _lectureRepository.GetByIdAsync(lectureSessionId);
+                        if (session != null)
+                        {
+                            if (fileType == "PDF") session.DrivePdfFileId = existing.DriveFileId;
+                            else session.DriveVideoFileId = existing.DriveFileId;
+                            session.Status = LectureStatus.Uploaded;
+                            session.ReviewStatus = ReviewStatus.Approved;
+                            session.UpdatedAt = DateTime.UtcNow;
+                            await _lectureRepository.UpdateAsync(session);
+                            await _lectureRepository.SaveChangesAsync();
+                            _logger.LogInformation(
+                                $"Session {lectureSessionId} linked to existing uploaded Drive file {existing.DriveFileId}");
+                        }
+                    }
+
+                    _logger.LogWarning(
+                        $"Duplicate content rejected for {lectureSessionId}: identical file hash already " +
+                        $"{existing.Status} as {existing.QueueEntryId} in folder '{existing.DriveFolderPath}'. Not enqueueing again.");
+                    return null;
+                }
             }
         }
 
@@ -409,6 +434,90 @@ public class UploadQueueService
         }
 
         return retryCount;
+    }
+
+    /// <summary>
+    /// Updates target Drive folder for an upload queue entry, resets failure, and triggers retry.
+    /// </summary>
+    public async Task<UploadQueueEntry> UpdateFolderAndRetryAsync(string queueEntryId, string driveFolderPath, string? batchId = null)
+    {
+        var entry = await _queueRepository.GetByIdAsync(queueEntryId)
+            ?? throw new InvalidOperationException($"Upload queue entry {queueEntryId} not found");
+
+        var oldFolder = entry.DriveFolderPath;
+        entry.DriveFolderPath = driveFolderPath.Trim();
+        entry.Status = UploadStatus.Pending;
+        entry.RetryCount = 0;
+        entry.NextRetryAt = null;
+        entry.LastError = null;
+        entry.UpdatedAt = DateTime.UtcNow;
+
+        await SaveAsync(entry);
+
+        if (!string.IsNullOrEmpty(entry.LectureSessionId))
+        {
+            var lecture = await _lectureRepository.GetByIdAsync(entry.LectureSessionId);
+            if (lecture != null)
+            {
+                lecture.DriveFolderPath = driveFolderPath.Trim();
+                if (!string.IsNullOrWhiteSpace(batchId))
+                {
+                    lecture.BatchId = batchId.Trim();
+                }
+                lecture.UpdatedAt = DateTime.UtcNow;
+                await _lectureRepository.UpdateAsync(lecture);
+                await _lectureRepository.SaveChangesAsync();
+            }
+        }
+
+        await _auditLogger.LogAsync("UPLOAD_QUEUE", queueEntryId, "FOLDER_UPDATED", null,
+            new { OldFolder = oldFolder }, new { NewFolder = entry.DriveFolderPath, BatchId = batchId },
+            $"Target Drive folder updated to '{driveFolderPath}' and queued for retry");
+
+        return entry;
+    }
+
+    /// <summary>
+    /// Syncs Drive folder on existing upload queue entries when lecture assignment is updated or confirmed.
+    /// Resets failed uploads to Pending so they immediately retry with the correct folder.
+    /// If no queue entry exists yet, enqueues the lecture.
+    /// </summary>
+    public async Task SyncLectureDriveFolderAsync(LectureSession session)
+    {
+        var entries = await _queueRepository.GetByLectureSessionIdAsync(session.LectureSessionId);
+        if (entries != null && entries.Count > 0)
+        {
+            foreach (var entry in entries)
+            {
+                entry.DriveFolderPath = session.DriveFolderPath;
+                if (entry.Status == UploadStatus.Failed || entry.Status == UploadStatus.FailedPermanently)
+                {
+                    entry.Status = UploadStatus.Pending;
+                    entry.RetryCount = 0;
+                    entry.NextRetryAt = null;
+                    entry.LastError = null;
+                }
+                entry.UpdatedAt = DateTime.UtcNow;
+                await SaveAsync(entry);
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(session.VideoFileLocalPath))
+        {
+            var ext = System.IO.Path.GetExtension(session.VideoFileLocalPath).ToLowerInvariant();
+            var fileType = ext == ".pdf" ? "PDF" : "VIDEO";
+            await EnqueueFileAsync(
+                session.LectureSessionId,
+                fileType,
+                session.VideoFileLocalPath,
+                session.VideoFileSizeBytes ?? 0,
+                session.VideoFileHash,
+                session.DriveFolderPath);
+        }
+    }
+
+    public async Task<List<UploadQueueEntry>> GetByLectureSessionIdAsync(string lectureSessionId)
+    {
+        return await _queueRepository.GetByLectureSessionIdAsync(lectureSessionId);
     }
 
     public async Task SaveAsync(UploadQueueEntry queueEntry)

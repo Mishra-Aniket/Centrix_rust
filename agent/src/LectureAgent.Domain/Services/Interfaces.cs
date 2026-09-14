@@ -13,6 +13,7 @@ public interface IFileWatcher
     void Start(string folderPath);
     void Stop();
     bool IsRunning { get; }
+    string? MonitoredFolderPath { get; }
 
     /// <summary>
     /// Re-enumerates the monitored folder and tracks any media files that are not
@@ -156,6 +157,7 @@ public interface IUploadQueueRepository : IRepository<UploadQueueEntry>
     Task<List<UploadQueueEntry>> GetPendingUploadsAsync(int limit);
     Task<List<UploadQueueEntry>> GetRetryableUploadsAsync();
     Task<UploadQueueEntry?> GetActiveByFileHashAsync(string fileHash);
+    Task<List<UploadQueueEntry>> GetByLectureSessionIdAsync(string lectureSessionId);
 }
 
 /// <summary>

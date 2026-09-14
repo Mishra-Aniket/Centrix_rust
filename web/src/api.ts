@@ -6,7 +6,12 @@ import type {
   LectureSession,
   MissingSlot,
   MonitorSnapshot,
+  QueueEntry,
   RoomOverview,
+  StudioCenter,
+  StudioFile,
+  StudioStatus,
+  StudioTeacher,
   TimetableEntry,
   TimetableOverride,
   TimetableSummary,
@@ -32,7 +37,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (apiKey) headers.set('X-Agent-Key', apiKey);
   const sessionToken = getStoredSessionToken();
   if (sessionToken) headers.set('X-Session', sessionToken);
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
 
   let res: Response;
   try {
@@ -184,16 +191,25 @@ export async function confirmLecture(
   batchId: string,
   subjectId: string,
   teacherId = '',
-  reviewedBy = 'Dashboard User'
+  reviewedBy = 'Dashboard User',
+  driveFolderPath?: string
 ): Promise<LectureSession> {
   return request(`/api/lectures/${lectureId}/confirm`, {
     method: 'PUT',
-    body: JSON.stringify({ batchId, subjectId, teacherId, reviewedBy }),
+    body: JSON.stringify({ batchId, subjectId, teacherId, reviewedBy, driveFolderPath }),
   });
 }
 
 export async function rematchLecture(lectureId: string): Promise<LectureSession> {
   return request(`/api/lectures/${lectureId}/rematch`, { method: 'POST' });
+}
+
+export async function cancelLecture(lectureId: string): Promise<LectureSession> {
+  return request(`/api/lectures/${lectureId}/cancel`, { method: 'POST' });
+}
+
+export async function enqueueLectureUpload(lectureId: string): Promise<LectureSession> {
+  return request(`/api/lectures/${lectureId}/enqueue-upload`, { method: 'POST' });
 }
 
 // ---------- Timetable actions ----------
@@ -287,4 +303,93 @@ export async function pauseTimetableSync(): Promise<ControlState> {
 
 export async function resumeTimetableSync(): Promise<ControlState> {
   return request('/api/control/timetable/sync/resume', { method: 'POST' });
+}
+
+export async function fetchMonitoredFolder(): Promise<{ folderPath: string; exists: boolean; isRunning: boolean }> {
+  return request('/api/control/monitoring/folder');
+}
+
+export async function updateMonitoredFolder(folderPath: string): Promise<{
+  success: boolean;
+  folderPath: string;
+  newlyTracked: number;
+  isRunning: boolean;
+}> {
+  return request('/api/control/monitoring/folder', {
+    method: 'POST',
+    body: JSON.stringify({ folderPath }),
+  });
+}
+
+export async function uploadLectureFile(formData: FormData): Promise<{
+  lecture: LectureSession;
+  message: string;
+  decision?: string;
+  confidence?: number;
+  matchedBatch?: string;
+}> {
+  return request('/api/lectures/upload', {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+export async function updateUploadFolder(
+  queueEntryId: string,
+  driveFolderPath: string,
+  batchId?: string
+): Promise<QueueEntry> {
+  return request(`/api/control/uploads/${queueEntryId}/update-folder`, {
+    method: 'POST',
+    body: JSON.stringify({ driveFolderPath, batchId }),
+  });
+}
+
+export async function fetchDriveFolders(q?: string): Promise<string[]> {
+  const query = q ? `?q=${encodeURIComponent(q)}` : '';
+  const data = await request<{ count: number; items: string[] }>(`/api/drive/folders${query}`);
+  return data.items || [];
+}
+
+// ---------- PW Studio API ----------
+
+export async function fetchStudioStatus(): Promise<StudioStatus> {
+  return request<StudioStatus>('/api/studio/status');
+}
+
+export async function fetchStudioCenters(): Promise<{ total: number; centers: StudioCenter[] }> {
+  return request('/api/studio/centers');
+}
+
+export async function fetchStudioTeachers(centerId?: string): Promise<{ total: number; center: string; teachers: StudioTeacher[] }> {
+  const params = new URLSearchParams();
+  if (centerId) params.set('centerId', centerId);
+  const query = params.toString();
+  return request(`/api/studio/teachers${query ? `?${query}` : ''}`);
+}
+
+export async function fetchStudioFiles(opts?: {
+  center?: string;
+  room?: string;
+  from?: string;
+  to?: string;
+  fileType?: string;
+  batchId?: string;
+}): Promise<{ total: number; files: StudioFile[] }> {
+  const params = new URLSearchParams();
+  if (opts?.center) params.set('center', opts.center);
+  if (opts?.room) params.set('room', opts.room);
+  if (opts?.from) params.set('from', opts.from);
+  if (opts?.to) params.set('to', opts.to);
+  if (opts?.fileType) params.set('fileType', opts.fileType);
+  if (opts?.batchId) params.set('batchId', opts.batchId);
+  const query = params.toString();
+  return request(`/api/studio/files${query ? `?${query}` : ''}`);
+}
+
+export async function updateStudioToken(token: string): Promise<{ success: boolean; connected: boolean }> {
+  return request('/api/studio/token', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
 }

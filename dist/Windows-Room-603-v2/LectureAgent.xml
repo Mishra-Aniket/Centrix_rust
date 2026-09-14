@@ -4,6 +4,35 @@
         <name>LectureAgent</name>
     </assembly>
     <members>
+        <member name="T:LectureAgent.Commands.AuthorizeGoogleCommand">
+            <summary>
+            Interactive Google Drive sign-in, triggered by the desktop app with
+            <c>LectureAgent.exe --authorize-google</c>.
+            The Windows service runs as LocalSystem and has no desktop, so it can never open the
+            consent browser itself. This runs as the signed-in user and writes the token into the
+            shared token store the service then reads.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Configuration.AgentPaths">
+            <summary>
+            Resolves the folders the agent reads and writes at runtime.
+            On Windows the agent runs as a LocalSystem service while the desktop app runs as the
+            signed-in user, so settings, database and logs live in a shared ProgramData folder both
+            accounts can reach. Every other platform keeps them beside the executable as before.
+            </summary>
+        </member>
+        <member name="P:LectureAgent.Configuration.AgentPaths.SharedRoot">
+            <summary>C:\ProgramData\LectureAgent on Windows, null on macOS and Linux.</summary>
+        </member>
+        <member name="P:LectureAgent.Configuration.AgentPaths.DataRoot">
+            <summary>Root for data written at runtime (database, Drive token).</summary>
+        </member>
+        <member name="P:LectureAgent.Configuration.AgentPaths.SharedSettingsFile">
+            <summary>
+            Settings file the installer and desktop app write. Layered on top of the
+            appsettings.json shipped next to the executable, which stays read-only.
+            </summary>
+        </member>
         <member name="T:LectureAgent.Presentation.Controllers.AgentInfoController">
             <summary>
             Read-only agent information used by the dashboard login and settings screens,
@@ -14,6 +43,31 @@
             <summary>
             Agent identity, configuration and runtime state for the dashboard.
             </summary>
+        </member>
+        <member name="T:LectureAgent.Presentation.Controllers.AuthController">
+            <summary>
+            Dashboard sign-in: "Login with Google (PW ID)" for staff (email allow-list, room
+            scoping) plus the staff-list management the admin uses. The API key keeps working
+            unchanged for the admin and integrations.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.AuthController.GetConfig">
+            <summary>Public: what the login screen needs before showing the Google button.</summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.AuthController.StartGoogleLogin(LectureAgent.Presentation.Controllers.AuthController.StartLoginRequest)">
+            <summary>Public: begins a login. The browser opens the returned consent URL.</summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.AuthController.PollGoogleLogin(System.String)">
+            <summary>Public: the login window polls this while the consent tab is open.</summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.AuthController.GoogleCallback(System.String,System.String,System.String)">
+            <summary>
+            Public: Google redirects here after consent. The code is exchanged for an identity,
+            the session is issued, and a tiny page stores it and returns to the dashboard.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.AuthController.Me">
+            <summary>Who is calling: a signed-in staff session or the admin API key.</summary>
         </member>
         <member name="T:LectureAgent.Presentation.Controllers.CenterRoomsController">
             <summary>
@@ -39,10 +93,25 @@
             Current state of all runtime switches.
             </summary>
         </member>
+        <member name="M:LectureAgent.Presentation.Controllers.ControlController.UpdateUploadFolder(System.String,LectureAgent.Presentation.Controllers.UpdateUploadFolderRequest)">
+            <summary>
+            Updates the target Drive folder / batch for an upload queue entry and resets it to pending retry.
+            </summary>
+        </member>
         <member name="M:LectureAgent.Presentation.Controllers.ControlController.RescanFolder">
             <summary>
             Re-enumerates the monitored folder. Files that already have a lecture session
             are skipped by the processing pipeline, so this is safe to repeat.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.ControlController.GetMonitoredFolder">
+            <summary>
+            Gets current monitored folder and its status.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.ControlController.UpdateMonitoredFolder(LectureAgent.Presentation.Controllers.UpdateMonitorFolderRequest)">
+            <summary>
+            Updates the folder watched for new recordings and scans it immediately.
             </summary>
         </member>
         <member name="M:LectureAgent.Presentation.Controllers.ControlController.SyncTimetable">
@@ -82,6 +151,12 @@
             Creates a new lecture session.
             </summary>
         </member>
+        <member name="M:LectureAgent.Presentation.Controllers.LecturesController.UploadLecture(Microsoft.AspNetCore.Http.IFormFile,System.String,System.String,System.String,System.String,System.String)">
+            <summary>
+            Manually upload and ingest a video or PDF notes file from the web app.
+            Supports large lecture recordings up to 10 GB.
+            </summary>
+        </member>
         <member name="M:LectureAgent.Presentation.Controllers.LecturesController.GetLecture(System.String)">
             <summary>
             Gets a lecture by ID.
@@ -95,6 +170,16 @@
         <member name="M:LectureAgent.Presentation.Controllers.LecturesController.ConfirmLecture(System.String,LectureAgent.Presentation.Controllers.ConfirmLectureRequest)">
             <summary>
             Confirms a lecture assignment.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.LecturesController.CancelLecture(System.String)">
+            <summary>
+            Cancels and rejects a lecture session and any associated upload queue entries.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.LecturesController.EnqueueUpload(System.String)">
+            <summary>
+            Enqueues the lecture's local file for upload to Google Drive immediately.
             </summary>
         </member>
         <member name="M:LectureAgent.Presentation.Controllers.LecturesController.ForceEnqueue(System.String)">
@@ -133,6 +218,64 @@
             Cancelled slots (active overrides) are excluded.
             </summary>
         </member>
+        <member name="T:LectureAgent.Presentation.Controllers.StudioController">
+            <summary>
+            Proxies PW Studio API data (centers, rooms, batches, teachers, live files)
+            for the Centrix web dashboard.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.StudioController.GetStatus">
+            <summary>
+            Studio API connectivity and token validity check.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.StudioController.UpdateToken(LectureAgent.Presentation.Controllers.UpdateStudioTokenRequest)">
+            <summary>
+            Updates the PW Studio ID token dynamically from the UI and verifies connectivity.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.StudioController.GetCenters">
+            <summary>
+            All centers, rooms, and batches from /sheets/master.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.StudioController.GetTeachers(System.String)">
+            <summary>
+            Teachers with Drive IDs for the configured center (or specified center).
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.StudioController.GetFiles(System.String,System.String,System.String,System.String,System.String,System.String)">
+            <summary>
+            Live lecture files from /files with optional filters.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Presentation.Controllers.SystemController">
+            <summary>
+            Endpoints for controlling the center host PC and inspecting system metrics,
+            installed classroom/recording applications, and process logs.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.SystemController.GetStatus">
+            <summary>
+            Returns live hardware &amp; OS metrics (CPU, RAM, Disk, Uptime).
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.SystemController.GetApps">
+            <summary>
+            Detects common recording, communication, and teaching apps on the system
+            and checks if their processes are currently active.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.SystemController.LaunchApp(LectureAgent.Presentation.Controllers.LaunchRequest)">
+            <summary>
+            Launches an application or system folder safely.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Presentation.Controllers.SystemController.GetLogs">
+            <summary>
+            Reads the last 50 lines of today's agent log.
+            </summary>
+        </member>
         <member name="M:LectureAgent.Presentation.Controllers.TimetableController.ListOverrides(System.String,System.Nullable{System.DateTime},System.String,System.Boolean)">
             <summary>
             Lists timetable overrides for a day (active only by default).
@@ -143,11 +286,24 @@
             Deactivates an override (undo). Idempotent.
             </summary>
         </member>
+        <member name="T:LectureAgent.Controllers.DriveController">
+            <summary>
+            Exposes the real Google Drive folder names so the dashboard's batch picker can
+            offer folders that actually exist instead of free-text guesses.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Controllers.DriveController.GetFolders(System.String,System.String,System.Int32)">
+            <summary>
+            Lists Drive folders, optionally filtered by a name fragment. When
+            <paramref name="under"/> is "root", only the batch folders inside the configured
+            root folder (GoogleDrive:RootFolderPath) are returned - not every folder on Drive.
+            </summary>
+        </member>
         <member name="M:LectureAgent.Security.ApiKeyMiddleware.IsPublicPath(Microsoft.AspNetCore.Http.PathString)">
             <summary>
             Everything outside /api is the static dashboard shell (html, js, css, icons) and
             carries no secrets, so it loads without a key and the login screen can render.
-            /api/health stays public for uptime checks; every other API call needs the key.
+            /api/health and /api/auth/config, /api/auth/google/* stay public for sign-in.
             </summary>
         </member>
         <member name="T:LectureAgent.Services.AgentControlState">
@@ -155,6 +311,134 @@
             Process-wide runtime switches that the dashboard can toggle while the agent is running.
             Deliberately not persisted: pausing is a temporary operational action, and a restart
             should always return the agent to fully automatic behaviour.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Services.AutoUpdate.AutoUpdateState">
+            <summary>
+            Visible state of the auto-updater, surfaced through the control API so the
+            dashboard (or an operator over SSH) can see what the agent is about to do.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Services.AutoUpdate.AutoUpdateService">
+            <summary>
+            Keeps 500 center PCs up to date without anyone driving to them.
+            Periodically fetches a small version manifest, and when a newer build exists:
+            downloads it, verifies its SHA-256, stages the extracted files, then spawns a
+            detached helper script and stops the agent. The helper swaps the install folder
+            while nothing is running, restarts the agent, health-checks it and restores the
+            previous build if the new one never comes up (rollback).
+            Disabled by default; enable with AutoUpdate:Enabled + AutoUpdate:ManifestUrl.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Services.AutoUpdate.AutoUpdateService.CheckForUpdateAsync(System.Threading.CancellationToken)">
+            <summary>
+            Runs one check-apply cycle. Also invoked manually from the control API.
+            Never throws for expected failures; the state object carries the outcome.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Services.AutoUpdate.UpdateManifest">
+            <summary>
+            Update manifest served by the distribution endpoint, e.g.
+            {
+              "version": "1.0.1",
+              "downloadUrl": "https://releases.example.com/LectureAgent-1.0.1-win-x64.zip",
+              "sha256": "a3f...",
+              "notes": "Fixes upload retry bug",
+              "mandatory": false
+            }
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Services.AutoUpdate.UpdateManifest.FromJson(System.String)">
+            <summary>
+            Parses the manifest JSON. Returns null (instead of throwing) on malformed
+            input so a broken release endpoint can never crash the agent.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Services.AutoUpdate.UpdateVersion">
+            <summary>
+            Semver-ish comparison with prerelease handling: "1.0.0-alpha" is older than
+            "1.0.0", and "1.0.1-alpha" is newer than "1.0.0". Pure and unit-testable.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Services.AutoUpdate.UpdateScripts">
+            <summary>
+            Self-contained helper scripts the agent writes to its update workspace and spawns
+            detached JUST BEFORE exiting. They wait for the agent process to die, swap the
+            install directory, restart the agent and roll everything back if the new build
+            never comes healthy. Kept as strings so a broken installation can always be
+            repaired from inside the shipped binary.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Services.DashboardSession">
+            <summary>One signed-in staff member on the dashboard.</summary>
+        </member>
+        <member name="M:LectureAgent.Services.DashboardSession.#ctor(System.String,System.String,System.Collections.Generic.IReadOnlyList{System.String},System.DateTime,System.Boolean)">
+            <summary>One signed-in staff member on the dashboard.</summary>
+        </member>
+        <member name="T:LectureAgent.Services.GoogleLoginResult">
+            <summary>Outcome of one "Login with Google" attempt.</summary>
+        </member>
+        <member name="M:LectureAgent.Services.GoogleLoginResult.#ctor(System.String,System.String,System.String)">
+            <summary>Outcome of one "Login with Google" attempt.</summary>
+        </member>
+        <member name="T:LectureAgent.Services.GoogleLoginFlow">
+            <summary>The consent URL a browser must open for one login flow.</summary>
+        </member>
+        <member name="M:LectureAgent.Services.GoogleLoginFlow.#ctor(System.String,System.String,System.DateTime)">
+            <summary>The consent URL a browser must open for one login flow.</summary>
+        </member>
+        <member name="T:LectureAgent.Services.DashboardSessionService">
+            <summary>
+            Owns the staff dashboard's Google-login sessions and the pending OAuth flows between
+            them. Sessions live in memory: an agent restart signs everyone out and the API key
+            keeps working, so no state has to survive. Staff emails (the allow-list) live in the
+            database so the admin edits them from the dashboard, with appsettings as a fallback.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Services.DashboardSessionService.CredentialsAvailable">
+            <summary>
+            True when the Google OAuth client credentials exist, either as the plain file or
+            as the protected copy the credential protector writes on startup. Checking only
+            the plain path here made "Login with Google" vanish after the first protection
+            pass, even though uploads kept working through the same file.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Services.DashboardSessionService.HasAllowedEmailsAsync">
+            <summary>False while no staff email has been registered anywhere yet.</summary>
+        </member>
+        <member name="M:LectureAgent.Services.DashboardSessionService.GetAllowedEmailsAsync">
+            <summary>Staff emails from the database plus the appsettings fallback list.</summary>
+        </member>
+        <member name="M:LectureAgent.Services.DashboardSessionService.CompleteLoginAsync(System.String,System.String,System.String)">
+            <summary>
+            Exchanges the consent code for an identity, checks the allow-list and rooms, and
+            issues the dashboard session. Called from the Google redirect callback.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Services.DashboardSessionService.TryValidateSession(System.String,LectureAgent.Services.DashboardSession@)">
+            <summary>Sliding expiry: every validated use extends the session.</summary>
+        </member>
+        <member name="M:LectureAgent.Services.DashboardSessionService.IsBootstrapModeAsync">
+            <summary>True until anyone at all is allowed: the first sign-in claims admin.</summary>
+        </member>
+        <member name="M:LectureAgent.Services.DashboardSessionService.IsAdminEmailAsync(System.String)">
+            <summary>
+            Returns whether an email has the dashboard administrator role. The editable
+            list is kept separately from the staff allow-list, with an appsettings list
+            available for centrally managed deployments.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Services.DashboardSessionService.ResolveRoomsForEmail(System.String)">
+            <summary>
+            Rooms a staff member may see. "pattern=603,604" entries in EmailRooms match an
+            exact email or an @domain; no matching entry means no restriction (all rooms).
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Services.DatabaseBackupService">
+            <summary>
+            Daily safety net for the SQLite database: runs "VACUUM INTO" (safe against a live,
+            WAL-mode database) into backups/ and keeps the most recent ones. Replaces external
+            cron scripts that would copy a live database file and risk corruption.
             </summary>
         </member>
         <member name="T:LectureAgent.Services.FileMonitoringService">
@@ -167,6 +451,13 @@
             Resolves the configured monitor folder to an absolute path, expanding the
             "Documents" alias to the user's real Documents folder. Shared with the
             agent-info endpoint so the dashboard shows the same folder the watcher uses.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Services.StorageCleanupService">
+            <summary>
+            Automatic storage manager that frees disk space by deleting local video/PDF recordings
+            that have already been fully uploaded and verified on Google Drive after a retention period.
+            Prevents the 20 classroom computers from running out of disk space during high recording volumes.
             </summary>
         </member>
         <member name="T:LectureAgent.Services.UploadProcessingService">

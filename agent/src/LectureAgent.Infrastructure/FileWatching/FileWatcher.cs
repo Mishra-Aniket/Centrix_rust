@@ -23,6 +23,7 @@ public class FileWatcher : IFileWatcher, IDisposable
     public event EventHandler<FileDetectedEventArgs>? FileDetected;
 
     public bool IsRunning => _watcher != null;
+    public string? MonitoredFolderPath => _folderPath;
 
     private sealed class TrackedFileInfo
     {

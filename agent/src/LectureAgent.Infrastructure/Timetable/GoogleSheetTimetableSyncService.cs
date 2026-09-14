@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using LectureAgent.Domain.Entities;
 using LectureAgent.Infrastructure.Database;
 using LectureAgent.Infrastructure.Tracker;
+using LectureAgent.Infrastructure.StudioApi;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -22,28 +23,32 @@ public sealed class GoogleSheetTimetableSyncService
     private readonly IConfiguration _config;
     private readonly ILogger<GoogleSheetTimetableSyncService> _logger;
     private readonly TrackerMappingSyncService? _trackerMapping;
+    private readonly StudioApiMappingSyncService? _studioApiMapping;
 
     public GoogleSheetTimetableSyncService(
         HttpClient httpClient,
         IConfiguration config,
         ILogger<GoogleSheetTimetableSyncService> logger,
-        TrackerMappingSyncService? trackerMapping = null)
+        TrackerMappingSyncService? trackerMapping = null,
+        StudioApiMappingSyncService? studioApiMapping = null)
     {
         _httpClient = httpClient;
         _config = config;
         _logger = logger;
         _trackerMapping = trackerMapping;
+        _studioApiMapping = studioApiMapping;
     }
 
     public async Task<int> SyncScheduleAsync(LectureContext dbContext, string? targetCenterId = null, string? targetRoomId = null, CancellationToken ct = default)
     {
         var spreadsheetId = _config["GoogleSheet:SpreadsheetId"] ?? "1XOfPQ6IqtKXJtG9l7b9JALBNKl8DKbJvlyLnbp5MCCc";
         var centerId = targetCenterId ?? _config["Agent:CenterId"] ?? "Pune - PCMC Vidyapeeth";
-        var roomId = targetRoomId ?? _config["Agent:RoomId"] ?? "603";
+        var roomId = targetRoomId ?? _config["Agent:RoomId"];
         var organizationId = _config["Agent:OrganizationId"] ?? "PCMC_VIDYAPEETH";
+        var syncAllRooms = string.IsNullOrWhiteSpace(roomId) || string.Equals(roomId, "ALL", StringComparison.OrdinalIgnoreCase);
 
-        _logger.LogInformation("Starting Google Sheet sync for Center: {CenterId}, Room: {RoomId} from Sheet: {SpreadsheetId}",
-            centerId, roomId, spreadsheetId);
+        _logger.LogInformation("Starting Google Sheet sync for Center: {CenterId}, Room: {RoomId} (SyncAllRooms: {SyncAll}) from Sheet: {SpreadsheetId}",
+            centerId, syncAllRooms ? "ALL" : roomId, syncAllRooms, spreadsheetId);
 
         try
         {
@@ -52,7 +57,22 @@ public sealed class GoogleSheetTimetableSyncService
             //    agent sheet's Rooms tab when the tracker is disabled or unreachable.
             var batchToRoom = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            if (_trackerMapping != null && _trackerMapping.IsEnabled)
+            // Priority 1: PW Studio API (most authoritative, live production data)
+            if (_studioApiMapping != null && _studioApiMapping.IsEnabled)
+            {
+                try
+                {
+                    batchToRoom = await _studioApiMapping.GetBatchToRoomAsync(centerId, ct);
+                    _logger.LogInformation("Using PW Studio API mapping for room filtering ({Count} batches)", batchToRoom.Count);
+                }
+                catch (Exception studioEx)
+                {
+                    _logger.LogWarning(studioEx, "Studio API mapping fetch failed; falling back to Tracker API");
+                }
+            }
+
+            // Priority 2: PW Center Tracker API
+            if (batchToRoom.Count == 0 && _trackerMapping != null && _trackerMapping.IsEnabled)
             {
                 try
                 {
@@ -122,8 +142,8 @@ public sealed class GoogleSheetTimetableSyncService
                     continue; // Skip batches not mapped to any room
                 }
 
-                // If RoomId is specified, only sync slots for that room (e.g. Room 603)
-                if (!string.IsNullOrEmpty(roomId) && !string.Equals(assignedRoom, roomId, StringComparison.OrdinalIgnoreCase))
+                // If RoomId is specified and not ALL, only sync slots for that room (e.g. Room 603)
+                if (!syncAllRooms && !string.Equals(assignedRoom, roomId, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -184,13 +204,19 @@ public sealed class GoogleSheetTimetableSyncService
 
             if (newEntries.Count > 0)
             {
-                // Delete existing entries for this room and these dates to prevent duplicates
+                // Delete existing entries for the target scope and these dates to prevent duplicates
                 var dates = newEntries.Select(e => e.ScheduledDate.Date).Distinct().ToList();
                 foreach (var d in dates)
                 {
-                    var existing = await dbContext.TimetableEntries
-                        .Where(e => e.CenterId == centerId && e.RoomId == roomId && e.ScheduledDate == d)
-                        .ToListAsync(ct);
+                    var query = dbContext.TimetableEntries
+                        .Where(e => e.CenterId == centerId && e.ScheduledDate == d);
+
+                    if (!syncAllRooms && !string.IsNullOrEmpty(roomId))
+                    {
+                        query = query.Where(e => e.RoomId == roomId);
+                    }
+
+                    var existing = await query.ToListAsync(ct);
                     if (existing.Count > 0)
                     {
                         dbContext.TimetableEntries.RemoveRange(existing);
@@ -201,8 +227,8 @@ public sealed class GoogleSheetTimetableSyncService
                 await dbContext.SaveChangesAsync(ct);
             }
 
-            _logger.LogInformation("Google Sheet sync successfully loaded {Count} timetable entries for Room {RoomId}!",
-                newEntries.Count, roomId);
+            _logger.LogInformation("Google Sheet sync successfully loaded {Count} timetable entries for Center {CenterId} (Room: {RoomId})!",
+                newEntries.Count, centerId, syncAllRooms ? "ALL" : roomId);
 
             return newEntries.Count;
         }

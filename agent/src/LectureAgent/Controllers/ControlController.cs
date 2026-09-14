@@ -99,6 +99,31 @@ public sealed class ControlController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Updates the target Drive folder / batch for an upload queue entry and resets it to pending retry.
+    /// </summary>
+    [HttpPost("uploads/{queueEntryId}/update-folder")]
+    public async Task<IActionResult> UpdateUploadFolder(
+        string queueEntryId,
+        [FromBody] UpdateUploadFolderRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request?.DriveFolderPath))
+            return BadRequest(new { error = "Target Drive folder path cannot be empty" });
+
+        try
+        {
+            var entry = await _queueService.UpdateFolderAndRetryAsync(
+                queueEntryId,
+                request.DriveFolderPath,
+                request.BatchId);
+            return Ok(entry);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("monitoring/pause")]
     public async Task<IActionResult> PauseMonitoring()
     {
@@ -129,6 +154,75 @@ public sealed class ControlController : ControllerBase
         _logger.LogInformation($"Manual rescan tracked {tracked} new file(s)");
         await LogControlAction("FOLDER_RESCAN", $"Manual rescan found {tracked} new file(s)");
         return Ok(new { newlyTracked = tracked });
+    }
+
+    /// <summary>
+    /// Gets current monitored folder and its status.
+    /// </summary>
+    [HttpGet("monitoring/folder")]
+    public IActionResult GetMonitoredFolder()
+    {
+        var current = _fileWatcher.MonitoredFolderPath 
+            ?? _configuration["FileWatcher:MonitorFolder"] 
+            ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+
+        return Ok(new
+        {
+            folderPath = current,
+            exists = !string.IsNullOrEmpty(current) && Directory.Exists(current),
+            isRunning = _fileWatcher.IsRunning
+        });
+    }
+
+    /// <summary>
+    /// Updates the folder watched for new recordings and scans it immediately.
+    /// </summary>
+    [HttpPost("monitoring/folder")]
+    public async Task<IActionResult> UpdateMonitoredFolder([FromBody] UpdateMonitorFolderRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request?.FolderPath))
+            return BadRequest(new { error = "Folder path cannot be empty" });
+
+        var targetPath = request.FolderPath.Trim();
+        try
+        {
+            if (!Directory.Exists(targetPath))
+            {
+                Directory.CreateDirectory(targetPath);
+                _logger.LogInformation($"Created recording directory: {targetPath}");
+            }
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = $"Invalid folder path or permission denied: {ex.Message}" });
+        }
+
+        try
+        {
+            if (_fileWatcher.IsRunning)
+            {
+                _fileWatcher.Stop();
+            }
+
+            _fileWatcher.Start(targetPath);
+            var newlyTracked = _fileWatcher.ScanExisting();
+
+            _configuration["FileWatcher:MonitorFolder"] = targetPath;
+            await LogControlAction("FOLDER_CHANGED", $"Monitored directory changed to {targetPath} (tracked {newlyTracked} new files)");
+
+            return Ok(new
+            {
+                success = true,
+                folderPath = targetPath,
+                newlyTracked,
+                isRunning = _fileWatcher.IsRunning
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update monitored folder");
+            return StatusCode(500, new { error = $"Failed to watch folder: {ex.Message}" });
+        }
     }
 
     /// <summary>
@@ -193,4 +287,15 @@ public sealed class ControlStateDto
         TimetableSyncPaused = state.TimetableSyncPaused,
         TimetableSyncPausedAt = state.TimetableSyncPausedAt
     };
+}
+
+public sealed class UpdateMonitorFolderRequest
+{
+    public string FolderPath { get; set; } = null!;
+}
+
+public sealed class UpdateUploadFolderRequest
+{
+    public string DriveFolderPath { get; set; } = null!;
+    public string? BatchId { get; set; }
 }

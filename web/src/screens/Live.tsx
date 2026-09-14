@@ -13,7 +13,8 @@ import {
   RotateCcw,
   Video,
 } from 'lucide-react';
-import type { AgentInfo, ControlState, HealthStatus, MissingSlot, MonitorSnapshot, TimetableEntry } from '../types';
+import { RoomSelector } from '../components/RoomSelector';
+import type { AgentInfo, ControlState, HealthStatus, MissingSlot, MonitorSnapshot, QueueEntry, TimetableEntry } from '../types';
 import { Card, Pill } from '../ui';
 
 interface LiveScreenProps {
@@ -31,6 +32,7 @@ interface LiveScreenProps {
   onRetryEntry: (queueEntryId: string) => void;
   onCancelEntry: (queueEntryId: string) => void;
   onRetryAllFailed: () => void;
+  onEditFolder?: (item: QueueEntry) => void;
 }
 
 function formatUptime(seconds: number): string {
@@ -90,6 +92,7 @@ export function LiveScreen({
   onRetryEntry,
   onCancelEntry,
   onRetryAllFailed,
+  onEditFolder,
 }: LiveScreenProps) {
   const activeQueue = snapshot?.queue.filter((q) => q.status === 'Uploading' || q.status === 'Pending') ?? [];
   const failedToday = snapshot?.summary.failedToday ?? snapshot?.summary.failed ?? 0;
@@ -112,63 +115,13 @@ export function LiveScreen({
 
   return (
     <div className="space-y-4">
-      {/* Room Selector Chips */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between px-1">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            Select Classroom Room
-          </span>
-          <span className="text-[10px] text-slate-400">
-            {rooms.length} room{rooms.length !== 1 ? 's' : ''} available
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <button
-            onClick={() => onSelectRoom('ALL')}
-            className={`px-3 py-1.5 text-xs rounded-xl font-semibold border transition active:scale-95 flex items-center gap-1.5 ${
-              isAllRooms
-                ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
-                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 shadow-xs'
-            }`}
-          >
-            <span>All Rooms</span>
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                isAllRooms ? 'bg-cyan-700 text-white' : 'bg-slate-100 text-slate-600'
-              }`}
-            >
-              {rooms.length}
-            </span>
-          </button>
-
-          {rooms.map((room) => {
-            const isLocal = room === agentInfo?.roomId;
-            const isSelected = selectedRoom === room;
-            return (
-              <button
-                key={room}
-                onClick={() => onSelectRoom(room)}
-                className={`px-3 py-1.5 text-xs rounded-xl font-semibold border transition active:scale-95 flex items-center gap-1.5 ${
-                  isSelected
-                    ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 shadow-xs'
-                }`}
-              >
-                <span>Room {room}</span>
-                {isLocal && (
-                  <span
-                    className={`text-[9px] px-1 py-0.2 rounded font-mono ${
-                      isSelected ? 'bg-cyan-700 text-cyan-100' : 'bg-cyan-50 text-cyan-700 border border-cyan-200'
-                    }`}
-                  >
-                    THIS PC
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* Room Selector Dropdown */}
+      <RoomSelector
+        rooms={rooms}
+        selectedRoom={selectedRoom}
+        onSelectRoom={onSelectRoom}
+        localRoomId={agentInfo?.roomId}
+      />
 
       {missingSlots.length > 0 && !isAllRooms && (
         <div className="bg-red-50 border border-red-200 rounded-2xl px-3.5 py-3 flex items-start gap-2.5">
@@ -434,6 +387,15 @@ export function LiveScreen({
                           className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100 active:scale-95 transition disabled:opacity-40"
                         >
                           <RotateCcw className="w-3 h-3" /> Retry
+                        </button>
+                      )}
+                      {canRetry && onEditFolder && (
+                        <button
+                          onClick={() => onEditFolder(item)}
+                          disabled={busy}
+                          className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 active:scale-95 transition disabled:opacity-40 shrink-0"
+                        >
+                          <Folder className="w-3 h-3" /> Change Folder
                         </button>
                       )}
                       {canCancel && (

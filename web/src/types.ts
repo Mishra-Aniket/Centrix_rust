@@ -36,6 +36,9 @@ export interface LectureSession {
   matchingReason?: string;
   driveFolderPath?: string;
   driveVideoFileId?: string;
+  pdfFilePath?: string;
+  pdfFileSize?: number;
+  drivePdfFileId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -54,6 +57,9 @@ export interface QueueEntry {
   lastError?: string | null;
   updatedAt: string;
   roomId?: string | null;
+  driveFolderPath?: string | null;
+  lectureSessionId?: string | null;
+  batchId?: string | null;
 }
 
 export interface TimetableEntry {
@@ -184,4 +190,45 @@ export interface RoomOverview {
   totalLectures: number;
   missingCount: number;
   missingItems: { time: string; batch: string; subject: string }[];
+}
+
+// ── PW Studio API Types ──
+
+export interface StudioFile {
+  _id: string;
+  fileName: string;
+  fileType: string;
+  startTime: string;
+  stopTime: string;
+  center: string;
+  room: string;
+  batchName?: string | null;
+  batchId?: string | null;
+  uploaded: boolean;
+  scheduled: boolean;
+  isProcessed: boolean;
+  deleted: boolean;
+  youtubeId?: string | null;
+  fileKey?: string | null;
+  fileDetails?: { baseUrl?: string; key?: string } | null;
+}
+
+export interface StudioCenter {
+  center: string;
+  rooms: string[];
+  batches: { batchName: string; batchId: string }[];
+}
+
+export interface StudioTeacher {
+  center: string;
+  name: string;
+  email: string;
+  driveLink: string;
+  driveId: string;
+}
+
+export interface StudioStatus {
+  connected: boolean;
+  reason?: string;
+  baseUrl?: string;
 }

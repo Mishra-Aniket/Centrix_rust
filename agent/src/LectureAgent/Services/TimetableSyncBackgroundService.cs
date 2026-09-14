@@ -52,11 +52,11 @@ public sealed class TimetableSyncBackgroundService : BackgroundService
                     var syncService = scope.ServiceProvider.GetRequiredService<GoogleSheetTimetableSyncService>();
 
                     var centerId = _config["Agent:CenterId"];
-                    var roomId = _config["Agent:RoomId"];
+                    var syncRoom = _config["GoogleSheet:SyncRoomId"] ?? "ALL";
 
-                    _logger.LogInformation("Syncing live timetable from Google Sheet for Room {RoomId}...", roomId);
-                    var count = await syncService.SyncScheduleAsync(dbContext, centerId, roomId, stoppingToken);
-                    _logger.LogInformation("Live timetable sync complete: {Count} slots active for Room {RoomId}", count, roomId);
+                    _logger.LogInformation("Syncing live timetable from Google Sheet for Center {CenterId}, Room: {SyncRoom}...", centerId, syncRoom);
+                    var count = await syncService.SyncScheduleAsync(dbContext, centerId, syncRoom, stoppingToken);
+                    _logger.LogInformation("Live timetable sync complete: {Count} slots active for Center {CenterId} (Room: {SyncRoom})", count, centerId, syncRoom);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

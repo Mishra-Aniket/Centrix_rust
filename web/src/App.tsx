@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Activity,
   Building2,
   Calendar,
   CheckCircle2,
-  Edit3,
+  FolderEdit,
   Plus,
   Radio,
   RefreshCw,
@@ -16,6 +17,7 @@ import type {
   LectureSession,
   MissingSlot,
   MonitorSnapshot,
+  QueueEntry,
   RoomOverview,
   TimetableEntry,
   TimetableOverride,
@@ -29,9 +31,11 @@ import { ReviewScreen } from './screens/Review';
 import { ScheduleScreen } from './screens/Schedule';
 import { ControlsScreen } from './screens/Controls';
 import { CenterScreen } from './screens/Center';
+import { StudioLiveScreen } from './screens/StudioLive';
+import { DriveFolderPicker } from './components/DriveFolderPicker';
 import { ActionButton, Field, Modal, inputClass } from './ui';
 
-type Tab = 'live' | 'review' | 'schedule' | 'center' | 'controls';
+type Tab = 'live' | 'review' | 'schedule' | 'center' | 'studio' | 'controls';
 
 export function App() {
   const [authed, setAuthed] = useState(isConfigured());
@@ -194,15 +198,30 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   // ---------- Lecture actions ----------
 
-  const handleConfirm = async (lecture: LectureSession, batch?: string, subject?: string, teacher?: string) => {
+  const handleConfirm = async (
+    lecture: LectureSession,
+    batch?: string,
+    subject?: string,
+    teacher?: string,
+    driveFolder?: string
+  ) => {
     const b = batch || lecture.batchId || 'JEE-2026';
     const s = subject || lecture.subjectId || 'PHYSICS';
     const t = teacher || lecture.teacherId || '';
+    const d = driveFolder || lecture.driveFolderPath || b;
     await runAction(
-      () => api.confirmLecture(lecture.lectureSessionId, b, s, t),
-      `✅ Approved for ${b} / ${s}! Upload routing updated.`
+      () => api.confirmLecture(lecture.lectureSessionId, b, s, t, 'Web Dashboard', d),
+      `✅ Routed to "${d}" for ${b} / ${s}!`
     );
     setOverrideModal((prev) => ({ ...prev, open: false, lecture: null }));
+  };
+
+  const handleManualUpload = async (formData: FormData) => {
+    await runAction(
+      () => api.uploadLectureFile(formData),
+      '✅ File uploaded and queued for Google Drive!'
+    );
+    await loadData();
   };
 
   const handleRematch = (lecture: LectureSession) =>
@@ -210,6 +229,16 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   const handleForceEnqueue = (lecture: LectureSession) =>
     runAction(() => api.forceEnqueueLecture(lecture.lectureSessionId), '⬆️ Upload queued despite duplicate flag');
+
+  const handleCancelLecture = (lecture: LectureSession) => {
+    if (!window.confirm(`Cancel lecture "${lecture.batchId || lecture.lectureSessionId}"? This will stop and remove it from uploads.`)) {
+      return;
+    }
+    runAction(() => api.cancelLecture(lecture.lectureSessionId), '🚫 Lecture cancelled');
+  };
+
+  const handleEnqueueUpload = (lecture: LectureSession) =>
+    runAction(() => api.enqueueLectureUpload(lecture.lectureSessionId), '⬆️ Upload queued to Google Drive!');
 
   // ---------- Upload queue actions ----------
 
@@ -343,9 +372,34 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   // ---------- Derived ----------
 
+  // Lectures stay in Review until actually uploaded/verified in Google Drive
   const pendingReviews = useMemo(
-    () => lectures.filter((l) => l.status === 'ReviewRequired' || l.reviewStatus === 'Pending'),
+    () =>
+      lectures.filter(
+        (l) =>
+          l.status !== 'Uploaded' &&
+          l.status !== 'Verified' &&
+          l.status !== 'Cancelled' &&
+          l.status !== 'Rejected'
+      ),
     [lectures]
+  );
+
+  const unapprovedCount = useMemo(
+    () =>
+      lectures.filter(
+        (l) =>
+          l.status === 'ReviewRequired' ||
+          l.reviewStatus === 'Pending' ||
+          l.status === 'Detected' ||
+          l.status === 'Processing'
+      ).length,
+    [lectures]
+  );
+
+  const failedQueueItems = useMemo(
+    () => snapshot?.queue.filter((q) => q.status === 'Failed' || q.status === 'FailedPermanently') || [],
+    [snapshot]
   );
 
   const duplicates = useMemo(() => lectures.filter((l) => l.status === 'Duplicate'), [lectures]);
@@ -372,7 +426,42 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     batchId: string;
     subjectId: string;
     teacherId: string;
-  }>({ open: false, lecture: null, batchId: '', subjectId: '', teacherId: '' });
+    driveFolderPath: string;
+  }>({
+    open: false,
+    lecture: null,
+    batchId: '',
+    subjectId: '',
+    teacherId: '',
+    driveFolderPath: '',
+  });
+
+  const [folderModal, setFolderModal] = useState<{
+    open: boolean;
+    queueEntry: QueueEntry | null;
+    folderPath: string;
+    batchId: string;
+  }>({ open: false, queueEntry: null, folderPath: '', batchId: '' });
+
+  const handleOpenFolderModal = (queueEntry: QueueEntry) => {
+    setFolderModal({
+      open: true,
+      queueEntry,
+      folderPath: queueEntry.driveFolderPath || queueEntry.batchId || '',
+      batchId: queueEntry.batchId || '',
+    });
+  };
+
+  const handleSaveUploadFolder = async () => {
+    if (!folderModal.queueEntry) return;
+    const targetFolder = folderModal.folderPath.trim();
+    const targetBatch = folderModal.batchId.trim() || targetFolder;
+    await runAction(
+      () => api.updateUploadFolder(folderModal.queueEntry!.queueEntryId, targetFolder, targetBatch),
+      `✅ Destination set to "${targetFolder}". Upload re-queued!`
+    );
+    setFolderModal({ open: false, queueEntry: null, folderPath: '', batchId: '' });
+  };
 
   const [addSlotModal, setAddSlotModal] = useState({
     open: false,
@@ -444,12 +533,13 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
             rooms={rooms}
             selectedRoom={effectiveRoom}
             onSelectRoom={setSelectedRoom}
-            pendingReviewCount={pendingReviews.length}
+            pendingReviewCount={unapprovedCount}
             missingSlots={missingSlots}
             busy={busy}
             onRetryEntry={handleRetryEntry}
             onCancelEntry={handleCancelEntry}
             onRetryAllFailed={handleRetryAllFailed}
+            onEditFolder={handleOpenFolderModal}
           />
         )}
 
@@ -457,19 +547,29 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           <ReviewScreen
             pendingReviews={pendingReviews}
             duplicates={duplicates}
+            failedQueueItems={failedQueueItems}
+            queueItems={snapshot?.queue || []}
+            rooms={rooms}
             busy={busy}
             onApprove={(item) => handleConfirm(item)}
             onEdit={(item) =>
               setOverrideModal({
                 open: true,
                 lecture: item,
-                batchId: item.batchId || 'JEE-2026-BATCH-A',
+                batchId: item.batchId || item.driveFolderPath || 'JEE-2026',
                 subjectId: item.subjectId || 'PHYSICS',
                 teacherId: item.teacherId || '',
+                driveFolderPath: item.driveFolderPath || item.batchId || 'JEE-2026',
               })
             }
             onRematch={handleRematch}
             onForceEnqueue={handleForceEnqueue}
+            onEditUploadFolder={handleOpenFolderModal}
+            onRetryUpload={handleRetryEntry}
+            onCancelUpload={handleCancelEntry}
+            onManualUpload={handleManualUpload}
+            onCancelLecture={handleCancelLecture}
+            onEnqueueUpload={handleEnqueueUpload}
           />
         )}
 
@@ -509,12 +609,18 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           />
         )}
 
+        {activeTab === 'studio' && (
+          <StudioLiveScreen />
+        )}
+
         {activeTab === 'controls' && (
           <ControlsScreen
             agentInfo={agentInfo}
             controlState={controlState}
             health={health}
             snapshot={snapshot}
+            rooms={timetableRooms}
+            currentRoom={effectiveRoom}
             busy={busy}
             onToggleUploads={toggleUploads}
             onToggleMonitoring={toggleMonitoring}
@@ -523,23 +629,47 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
             onRetryAllFailed={handleRetryAllFailed}
             onSyncNow={handleSyncNow}
             onLogout={onLogout}
+            onFolderUpdated={loadData}
+            onFileUploaded={loadData}
           />
         )}
       </main>
 
-      {/* Override Modal */}
+      {/* Override / Target Drive Folder Modal */}
       <Modal
         open={overrideModal.open && overrideModal.lecture !== null}
-        title="Change Batch & Subject"
-        icon={<Edit3 className="w-4 h-4 text-cyan-400" />}
-        onClose={() => setOverrideModal({ open: false, lecture: null, batchId: '', subjectId: '', teacherId: '' })}
+        title="Assign Google Drive Folder & Batch"
+        icon={<FolderEdit className="w-4 h-4 text-cyan-400" />}
+        onClose={() =>
+          setOverrideModal({
+            open: false,
+            lecture: null,
+            batchId: '',
+            subjectId: '',
+            teacherId: '',
+            driveFolderPath: '',
+          })
+        }
       >
-        <div className="space-y-3 text-xs">
-          <Field label="Target Batch">
+        <div className="space-y-3.5 text-xs">
+          {/* Direct Google Drive Folder Selector */}
+          <DriveFolderPicker
+            value={overrideModal.driveFolderPath}
+            onChange={(f) =>
+              setOverrideModal((prev) => ({
+                ...prev,
+                driveFolderPath: f,
+                batchId: prev.batchId ? prev.batchId : f,
+              }))
+            }
+          />
+
+          <Field label="Target Batch Name">
             <input
               type="text"
               value={overrideModal.batchId}
               onChange={(e) => setOverrideModal((prev) => ({ ...prev, batchId: e.target.value }))}
+              placeholder="e.g. JEE-2026"
               className={inputClass}
             />
           </Field>
@@ -548,6 +678,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
               type="text"
               value={overrideModal.subjectId}
               onChange={(e) => setOverrideModal((prev) => ({ ...prev, subjectId: e.target.value }))}
+              placeholder="e.g. PHYSICS"
               className={inputClass}
             />
           </Field>
@@ -556,6 +687,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
               type="text"
               value={overrideModal.teacherId}
               onChange={(e) => setOverrideModal((prev) => ({ ...prev, teacherId: e.target.value }))}
+              placeholder="e.g. PROF_VERMA"
               className={inputClass}
             />
           </Field>
@@ -564,11 +696,19 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         <div className="pt-2">
           <ActionButton
             tone="primary"
-            onClick={() => handleConfirm(overrideModal.lecture!, overrideModal.batchId, overrideModal.subjectId, overrideModal.teacherId)}
-            disabled={busy}
+            onClick={() =>
+              handleConfirm(
+                overrideModal.lecture!,
+                overrideModal.batchId,
+                overrideModal.subjectId,
+                overrideModal.teacherId,
+                overrideModal.driveFolderPath
+              )
+            }
+            disabled={busy || !overrideModal.driveFolderPath.trim()}
             className="w-full py-2.5"
           >
-            Save & Route to Drive
+            Save & Route to Google Drive
           </ActionButton>
         </div>
       </Modal>
@@ -655,12 +795,70 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </form>
       </Modal>
 
+      {/* Target Drive Folder Selection Modal */}
+      <Modal
+        open={folderModal.open && folderModal.queueEntry !== null}
+        title="Select Drive Folder / Batch"
+        icon={<FolderEdit className="w-4 h-4 text-cyan-400" />}
+        onClose={() => setFolderModal({ open: false, queueEntry: null, folderPath: '', batchId: '' })}
+      >
+        <div className="space-y-3 text-xs">
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-1">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold">
+              Selected Recording File
+            </span>
+            <span className="text-xs font-mono font-bold text-slate-800 break-all">
+              {folderModal.queueEntry?.fileName}
+            </span>
+            {folderModal.queueEntry?.lastError && (
+              <p className="text-[11px] text-rose-600 mt-1 leading-snug">
+                Error: {folderModal.queueEntry.lastError}
+              </p>
+            )}
+          </div>
+
+          {/* Google Drive Folder Selector */}
+          <DriveFolderPicker
+            value={folderModal.folderPath}
+            onChange={(f) =>
+              setFolderModal((prev) => ({
+                ...prev,
+                folderPath: f,
+                batchId: prev.batchId ? prev.batchId : f,
+              }))
+            }
+          />
+
+          <Field label="Batch ID (Optional)">
+            <input
+              type="text"
+              value={folderModal.batchId}
+              onChange={(e) => setFolderModal((prev) => ({ ...prev, batchId: e.target.value }))}
+              placeholder="e.g. 11TH-JEE-A"
+              className={inputClass}
+            />
+          </Field>
+        </div>
+
+        <div className="pt-2">
+          <ActionButton
+            tone="primary"
+            onClick={handleSaveUploadFolder}
+            disabled={busy || !folderModal.folderPath.trim()}
+            className="w-full py-2.5"
+          >
+            Save Folder & Retry Upload Now
+          </ActionButton>
+        </div>
+      </Modal>
+
       {/* Bottom Mobile Tab Bar */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 border-t border-slate-200/90 backdrop-blur-lg px-3 py-2 flex items-center justify-around max-w-md mx-auto shadow-md">
         {([
           { id: 'live', icon: Radio, label: 'Live' },
-          { id: 'review', icon: CheckCircle2, label: 'Review', badge: pendingReviews.length },
+          { id: 'review', icon: CheckCircle2, label: 'Review', badge: unapprovedCount + failedQueueItems.length },
           { id: 'schedule', icon: Calendar, label: 'Schedule' },
+          { id: 'studio', icon: Activity, label: 'Studio' },
           { id: 'center', icon: Building2, label: 'Center' },
           { id: 'controls', icon: Settings2, label: 'Controls' },
         ] as { id: Tab; icon: typeof Radio; label: string; badge?: number }[]).map((tab) => {

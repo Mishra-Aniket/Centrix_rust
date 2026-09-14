@@ -66,7 +66,10 @@ public sealed class MonitorController : ControllerBase
                 DriveFileId = x.Queue.DriveFileId,
                 LastError = x.Queue.LastError,
                 UpdatedAt = x.Queue.UpdatedAt,
-                RoomId = x.Lecture != null ? x.Lecture.RoomId : null
+                RoomId = x.Lecture != null ? x.Lecture.RoomId : null,
+                DriveFolderPath = x.Queue.DriveFolderPath,
+                LectureSessionId = x.Queue.LectureSessionId,
+                BatchId = x.Lecture != null ? x.Lecture.BatchId : null
             })
             .ToListAsync();
 
@@ -211,6 +214,9 @@ public sealed class UploadMonitorDto
     public string? LastError { get; set; }
     public DateTime UpdatedAt { get; set; }
     public string? RoomId { get; set; }
+    public string? DriveFolderPath { get; set; }
+    public string? LectureSessionId { get; set; }
+    public string? BatchId { get; set; }
 }
 
 public sealed class LectureMonitorDto

@@ -44,7 +44,7 @@
             Service for managing upload queue.
             </summary>
         </member>
-        <member name="M:LectureAgent.Application.Services.UploadQueueService.EnqueueFileAsync(System.String,System.String,System.String,System.Int64,System.String,System.String)">
+        <member name="M:LectureAgent.Application.Services.UploadQueueService.EnqueueFileAsync(System.String,System.String,System.String,System.Int64,System.String,System.String,System.Boolean)">
             <summary>
             Adds a file to the upload queue.
             </summary>
@@ -68,6 +68,18 @@
         <member name="M:LectureAgent.Application.Services.UploadQueueService.RetryAllFailedAsync">
             <summary>
             Resets every failed entry (including permanently failed) back to pending.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.UploadQueueService.UpdateFolderAndRetryAsync(System.String,System.String,System.String)">
+            <summary>
+            Updates target Drive folder for an upload queue entry, resets failure, and triggers retry.
+            </summary>
+        </member>
+        <member name="M:LectureAgent.Application.Services.UploadQueueService.SyncLectureDriveFolderAsync(LectureAgent.Domain.Entities.LectureSession)">
+            <summary>
+            Syncs Drive folder on existing upload queue entries when lecture assignment is updated or confirmed.
+            Resets failed uploads to Pending so they immediately retry with the correct folder.
+            If no queue entry exists yet, enqueues the lecture.
             </summary>
         </member>
         <member name="T:LectureAgent.Application.Services.TimetableSyncService">

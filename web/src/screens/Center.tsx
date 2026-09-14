@@ -82,8 +82,8 @@ export function CenterScreen({ overview, busy, loading, onRefresh, onSaveRoom, o
           <Building2 className="w-8 h-8 text-slate-400 mx-auto" />
           <p className="font-bold text-slate-800">No other rooms linked yet</p>
           <p className="text-[11px] leading-relaxed text-slate-500">
-            Har room ke PC pe agent install karo (same zip, wizard mein alag Room ID), phir
-            us PC ka URL + API key yahan add karo — sab rooms ki status ek jagah dikhegi.
+            Install the agent on each classroom PC (using the same package with a unique Room ID), then
+            add that PC's URL and API key here — you can monitor all rooms in one place.
           </p>
         </Card>
       ) : (

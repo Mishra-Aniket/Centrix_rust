@@ -81,8 +81,13 @@ public class LectureRepository : GenericRepository<LectureSession>, ILectureRepo
     public async Task<List<LectureSession>> GetPendingReviewAsync(string centerId)
     {
         return await _dbSet
-            .Where(l => l.CenterId == centerId && l.Status == LectureStatus.ReviewRequired)
-            .OrderBy(l => l.CreatedAt)
+            .Where(l => l.CenterId == centerId
+                && l.Status != LectureStatus.Uploaded
+                && l.Status != LectureStatus.Verified
+                && l.Status != LectureStatus.Cancelled
+                && l.Status != LectureStatus.Rejected
+                && l.Status != LectureStatus.Archived)
+            .OrderByDescending(l => l.CreatedAt)
             .ToListAsync();
     }
 
@@ -153,6 +158,13 @@ public class UploadQueueRepository : GenericRepository<UploadQueueEntry>, IUploa
                     || e.Status == UploadStatus.Uploaded))
             .OrderByDescending(e => e.CreatedAt)
             .FirstOrDefaultAsync();
+    }
+
+    public async Task<List<UploadQueueEntry>> GetByLectureSessionIdAsync(string lectureSessionId)
+    {
+        return await _dbSet
+            .Where(e => e.LectureSessionId == lectureSessionId)
+            .ToListAsync();
     }
 }
 

@@ -24,6 +24,11 @@
             Configuration entry for the system.
             </summary>
         </member>
+        <member name="T:LectureAgent.Domain.Entities.DeviceHeartbeatSnapshot">
+            <summary>
+            Snapshot of device health and upload counters.
+            </summary>
+        </member>
         <member name="T:LectureAgent.Domain.Entities.LectureSession">
             <summary>
             Represents a recorded lecture session with metadata and assignment information.
@@ -138,6 +143,11 @@
         <member name="T:LectureAgent.Domain.Services.IAuditLogger">
             <summary>
             Interface for audit logging.
+            </summary>
+        </member>
+        <member name="T:LectureAgent.Domain.Services.ICloudStateSync">
+            <summary>
+            Cloud sync interface for state sync (lectures, review queue, device heartbeats, and audit entries).
             </summary>
         </member>
         <member name="T:LectureAgent.Domain.Services.IRepository`1">

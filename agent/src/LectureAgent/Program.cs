@@ -12,6 +12,7 @@ using LectureAgent.Infrastructure.FileWatching;
 using LectureAgent.Infrastructure.Matching;
 using LectureAgent.Infrastructure.Timetable;
 using LectureAgent.Infrastructure.Tracker;
+using LectureAgent.Infrastructure.StudioApi;
 using LectureAgent.Security;
 using LectureAgent.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
@@ -73,6 +74,8 @@ builder.Services.AddHostedService<TimetableSyncBackgroundService>();
 
 builder.Services.AddHttpClient<GoogleSheetTimetableSyncService>();
 builder.Services.AddHttpClient<TrackerMappingSyncService>();
+builder.Services.AddHttpClient<StudioApiClient>();
+builder.Services.AddScoped<StudioApiMappingSyncService>();
 builder.Services.AddScoped<GoogleSheetTimetableSyncService>();
 builder.Services.AddScoped<ITimetableProvider, LocalTimetableProvider>();
 builder.Services.AddScoped<IGoogleDriveUploader>(sp =>

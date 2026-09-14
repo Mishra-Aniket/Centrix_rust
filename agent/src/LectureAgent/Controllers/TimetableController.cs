@@ -69,9 +69,9 @@ public sealed class TimetableController : ControllerBase
     public async Task<ActionResult> TriggerSync(
         [FromServices] GoogleSheetTimetableSyncService syncService,
         [FromQuery] string? centerId,
-        [FromQuery] string? roomId)
+        [FromQuery] string? roomId = "ALL")
     {
-        var count = await syncService.SyncScheduleAsync(_dbContext, centerId, roomId);
+        var count = await syncService.SyncScheduleAsync(_dbContext, centerId, roomId ?? "ALL");
         return Ok(new { count, message = $"Synced {count} timetable entries" });
     }
 
