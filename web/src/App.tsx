@@ -33,12 +33,28 @@ import { ControlsScreen } from './screens/Controls';
 import { CenterScreen } from './screens/Center';
 import { StudioLiveScreen } from './screens/StudioLive';
 import { DriveFolderPicker } from './components/DriveFolderPicker';
+import { VideoThumbnail } from './components/VideoThumbnail';
 import { ActionButton, Field, Modal, inputClass } from './ui';
+import { isTauri, getServiceStatus, readSettings, notify, getBandwidthSettings } from './tauri';
+import { SetupWizard } from './screens/SetupWizard';
 
 type Tab = 'live' | 'review' | 'schedule' | 'center' | 'studio' | 'controls';
 
 export function App() {
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [checkingSetup, setCheckingSetup] = useState(isTauri());
   const [authed, setAuthed] = useState(isConfigured());
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    readSettings().then((settings) => {
+      const apiKey = (settings?.Auth as any)?.ApiKey;
+      if (!apiKey) {
+        setNeedsSetup(true);
+      }
+      setCheckingSetup(false);
+    }).catch(() => setCheckingSetup(false));
+  }, []);
 
   useEffect(
     () =>
@@ -47,6 +63,14 @@ export function App() {
       }),
     []
   );
+
+  if (checkingSetup) {
+    return <div className="flex items-center justify-center h-screen bg-[#1b1033]"><div className="text-white text-lg">Loading Centrix...</div></div>;
+  }
+
+  if (needsSetup) {
+    return <SetupWizard onComplete={() => { setNeedsSetup(false); setAuthed(true); }} />;
+  }
 
   if (!authed) {
     return <LoginScreen onConnected={() => setAuthed(true)} />;
@@ -80,6 +104,20 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [serviceState, setServiceState] = useState<string>('unknown');
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    const poll = async () => {
+      try {
+        const status = await getServiceStatus();
+        setServiceState(status.state);
+      } catch { setServiceState('unknown'); }
+    };
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   const agentInfoRef = useRef<AgentInfo | null>(null);
   const effectiveRoom = selectedRoom || agentInfo?.roomId || '603';
@@ -130,6 +168,61 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       setLoading(false);
     }
   }, [selectedRoom, selectedDate]);
+
+  // --- Native Notification Tracking ---
+  const notifiedIdsRef = useRef<Set<string>>(new Set());
+
+  // Fire native notifications when data changes
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    // Notify for new ReviewRequired lectures
+    for (const l of lectures) {
+      if (
+        (l.status === 'ReviewRequired' || l.reviewStatus === 'Pending') &&
+        !notifiedIdsRef.current.has(`review-${l.lectureSessionId}`)
+      ) {
+        notifiedIdsRef.current.add(`review-${l.lectureSessionId}`);
+        notify(
+          '📋 Lecture Needs Review',
+          `${l.batchId || 'Unknown Batch'} / ${l.subjectId || 'Unknown Subject'} — Confidence: ${l.confidenceScore}%`
+        );
+      }
+    }
+
+    // Notify for completed uploads
+    if (snapshot?.queue) {
+      for (const q of snapshot.queue) {
+        if (
+          q.status === 'Uploaded' &&
+          !notifiedIdsRef.current.has(`uploaded-${q.queueEntryId}`)
+        ) {
+          notifiedIdsRef.current.add(`uploaded-${q.queueEntryId}`);
+          notify(
+            '✅ Lecture Uploaded',
+            `${q.fileName} uploaded to Google Drive successfully`
+          );
+        }
+
+        if (
+          (q.status === 'Failed' || q.status === 'FailedPermanently') &&
+          !notifiedIdsRef.current.has(`failed-${q.queueEntryId}`)
+        ) {
+          notifiedIdsRef.current.add(`failed-${q.queueEntryId}`);
+          notify(
+            '❌ Upload Failed',
+            `${q.fileName}${q.lastError ? ': ' + q.lastError : ''}`
+          );
+        }
+      }
+    }
+
+    // Limit the Set size to prevent memory leak
+    if (notifiedIdsRef.current.size > 500) {
+      const arr = Array.from(notifiedIdsRef.current);
+      notifiedIdsRef.current = new Set(arr.slice(-200));
+    }
+  }, [lectures, snapshot]);
 
   // Initial load + reload whenever the room changes
   useEffect(() => {
@@ -196,8 +289,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     [loadData, showToast]
   );
 
-  // ---------- Lecture actions ----------
-
   const handleConfirm = async (
     lecture: LectureSession,
     batch?: string,
@@ -205,10 +296,23 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     teacher?: string,
     driveFolder?: string
   ) => {
-    const b = batch || lecture.batchId || 'JEE-2026';
-    const s = subject || lecture.subjectId || 'PHYSICS';
-    const t = teacher || lecture.teacherId || '';
-    const d = driveFolder || lecture.driveFolderPath || b;
+    const b = (batch || lecture.batchId || '').trim();
+    if (!b || b.toLowerCase() === 'unassigned') {
+      // Prompt operator to select the actual batch and Drive folder
+      setOverrideModal({
+        open: true,
+        lecture,
+        batchId: '',
+        subjectId: lecture.subjectId || 'PHYSICS',
+        teacherId: lecture.teacherId || '',
+        driveFolderPath: lecture.driveFolderPath || '',
+      });
+      return;
+    }
+
+    const s = (subject || lecture.subjectId || 'PHYSICS').trim();
+    const t = (teacher || lecture.teacherId || '').trim();
+    const d = (driveFolder || lecture.driveFolderPath || b).trim();
     await runAction(
       () => api.confirmLecture(lecture.lectureSessionId, b, s, t, 'Web Dashboard', d),
       `✅ Routed to "${d}" for ${b} / ${s}!`
@@ -473,8 +577,17 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     teacherId: '',
   });
 
+  const navigationTabs: { id: Tab; icon: typeof Radio; label: string; badge?: number }[] = [
+    { id: 'live', icon: Radio, label: 'Live' },
+    { id: 'review', icon: CheckCircle2, label: 'Review', badge: unapprovedCount + failedQueueItems.length },
+    { id: 'schedule', icon: Calendar, label: 'Schedule' },
+    { id: 'studio', icon: Activity, label: 'Studio' },
+    { id: 'center', icon: Building2, label: 'Center' },
+    { id: 'controls', icon: Settings2, label: 'Controls' },
+  ];
+
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50 text-slate-900 font-sans pb-20 select-none">
+    <div className="flex flex-col min-h-screen bg-slate-50 text-slate-900 font-sans select-none">
       {/* Toast */}
       {toast && (
         <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-center pointer-events-none">
@@ -485,24 +598,80 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       )}
 
       {/* Top Header */}
-      <header className="sticky top-0 z-30 bg-white/95 border-b border-slate-200/90 backdrop-blur-md px-4 py-3 flex items-center justify-between shadow-xs">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center p-1 shadow-xs">
+      <header className="sticky top-0 z-30 bg-white/95 border-b border-slate-200/90 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center p-1 shadow-xs shrink-0">
             <img src="/logo.png" alt="PW Logo" className="w-full h-full object-contain" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
+              {isTauri() && (
+                <span className={`inline-block w-2.5 h-2.5 rounded-full mr-1.5 ${
+                  serviceState === 'Running' ? 'bg-emerald-400' :
+                  serviceState === 'Stopped' ? 'bg-red-400' :
+                  serviceState === 'NotInstalled' ? 'bg-gray-400' :
+                  'bg-amber-400'
+                }`} title={`Agent: ${serviceState}`} />
+              )}
               <span className="font-bold text-base tracking-tight text-slate-900">Centrix</span>
               <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-cyan-50 text-cyan-700 border border-cyan-200 font-semibold font-mono">PW Ops</span>
             </div>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-slate-500 truncate max-w-[180px] sm:max-w-none">
               Center: <strong className="text-slate-800">{agentInfo?.centerId || '...'}</strong>
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${
+        {/* Desktop Navigation Tabs (Visible on md and up) */}
+        <nav className="hidden md:flex items-center gap-1 bg-slate-100/90 p-1 rounded-2xl border border-slate-200/70 shadow-2xs">
+          {navigationTabs.map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                  active
+                    ? 'bg-white text-cyan-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${active ? 'text-cyan-600' : 'text-slate-400'}`} />
+                <span>{tab.label}</span>
+                {tab.badge ? (
+                  <span className="ml-1 px-1.5 py-0.2 bg-amber-500 text-white font-bold text-[10px] rounded-full shadow-xs">
+                    {tab.badge}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Right Action Controls */}
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* Quick Room Selector (Visible on desktop lg:) */}
+          {rooms.length > 0 && (
+            <div className="hidden lg:flex items-center gap-1.5">
+              <select
+                value={effectiveRoom}
+                onChange={(e) => setSelectedRoom(e.target.value)}
+                className="text-xs font-bold py-1.5 px-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-800 shadow-2xs hover:border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-cyan-500/30 cursor-pointer transition"
+                title="Quick Room Switcher"
+              >
+                <option value="ALL">All Rooms ({rooms.length})</option>
+                {rooms.map((r) => (
+                  <option key={r} value={r}>
+                    Room {r} {r === agentInfo?.roomId ? '★ (This PC)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Live Status Pill */}
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold shadow-2xs ${
             health?.status === 'Healthy'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
               : 'bg-red-50 border-red-200 text-red-700'
@@ -510,6 +679,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
             <span className={`w-2 h-2 rounded-full ${health?.status === 'Healthy' ? 'bg-emerald-500 animate-ping' : 'bg-red-500'}`} />
             <span>{health?.status === 'Healthy' ? 'Agent Live' : 'Offline'}</span>
           </div>
+
           <button
             onClick={loadData}
             disabled={loading}
@@ -522,7 +692,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       </header>
 
       {/* Content Body */}
-      <main className="flex-1 p-4 max-w-md mx-auto w-full space-y-4">
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6 pb-24 md:pb-12">
         {activeTab === 'live' && (
           <LiveScreen
             health={health}
@@ -638,8 +808,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       {/* Override / Target Drive Folder Modal */}
       <Modal
         open={overrideModal.open && overrideModal.lecture !== null}
-        title="Assign Google Drive Folder & Batch"
-        icon={<FolderEdit className="w-4 h-4 text-cyan-400" />}
+        title="Approve & Route to Google Drive"
+        icon={<FolderEdit className="w-5 h-5 text-cyan-500" />}
+        maxWidth="max-w-xl sm:max-w-2xl"
         onClose={() =>
           setOverrideModal({
             open: false,
@@ -651,7 +822,36 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           })
         }
       >
-        <div className="space-y-3.5 text-xs">
+        <div className="space-y-4 text-xs">
+          {/* Lecture Preview Card */}
+          {overrideModal.lecture && (
+            <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-900 font-mono">
+                    Room {overrideModal.lecture.roomId}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-cyan-50 text-cyan-700 border border-cyan-200 font-semibold font-mono">
+                    {overrideModal.lecture.lectureSessionId}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-500 font-mono">
+                  {new Date(overrideModal.lecture.detectedStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {' - '}
+                  {new Date(overrideModal.lecture.detectedEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+
+              {/* Compact Video/PDF Thumbnail or File Banner */}
+              <VideoThumbnail
+                filePath={overrideModal.lecture.videoFilePath || overrideModal.lecture.pdfFilePath}
+                fileName={(overrideModal.lecture.videoFilePath || overrideModal.lecture.pdfFilePath)?.split(/[/\\]/).pop()}
+                fileType={overrideModal.lecture.pdfFilePath ? 'PDF' : 'VIDEO'}
+                compact
+              />
+            </div>
+          )}
+
           {/* Direct Google Drive Folder Selector */}
           <DriveFolderPicker
             value={overrideModal.driveFolderPath}
@@ -659,29 +859,34 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
               setOverrideModal((prev) => ({
                 ...prev,
                 driveFolderPath: f,
-                batchId: prev.batchId ? prev.batchId : f,
+                batchId: prev.batchId && prev.batchId !== 'Unassigned' ? prev.batchId : f,
               }))
             }
           />
 
-          <Field label="Target Batch Name">
-            <input
-              type="text"
-              value={overrideModal.batchId}
-              onChange={(e) => setOverrideModal((prev) => ({ ...prev, batchId: e.target.value }))}
-              placeholder="e.g. JEE-2026"
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Subject">
-            <input
-              type="text"
-              value={overrideModal.subjectId}
-              onChange={(e) => setOverrideModal((prev) => ({ ...prev, subjectId: e.target.value }))}
-              placeholder="e.g. PHYSICS"
-              className={inputClass}
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Target Batch Name">
+              <input
+                type="text"
+                value={overrideModal.batchId}
+                onChange={(e) => setOverrideModal((prev) => ({ ...prev, batchId: e.target.value }))}
+                placeholder="e.g. 11TH-JEE-A"
+                className={inputClass}
+                required
+              />
+            </Field>
+            <Field label="Subject">
+              <input
+                type="text"
+                value={overrideModal.subjectId}
+                onChange={(e) => setOverrideModal((prev) => ({ ...prev, subjectId: e.target.value }))}
+                placeholder="e.g. PHYSICS"
+                className={inputClass}
+                required
+              />
+            </Field>
+          </div>
+
           <Field label="Teacher (Optional)">
             <input
               type="text"
@@ -693,7 +898,23 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           </Field>
         </div>
 
-        <div className="pt-2">
+        <div className="pt-3 border-t border-slate-100 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              setOverrideModal({
+                open: false,
+                lecture: null,
+                batchId: '',
+                subjectId: '',
+                teacherId: '',
+                driveFolderPath: '',
+              })
+            }
+            className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold text-xs transition active:scale-95"
+          >
+            Cancel
+          </button>
           <ActionButton
             tone="primary"
             onClick={() =>
@@ -706,9 +927,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
               )
             }
             disabled={busy || !overrideModal.driveFolderPath.trim()}
-            className="w-full py-2.5"
+            className="flex-2 py-2.5 text-xs font-bold shadow-lg shadow-cyan-500/20"
           >
-            Save & Route to Google Drive
+            🚀 Approve & Route to Drive
           </ActionButton>
         </div>
       </Modal>
@@ -799,7 +1020,8 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       <Modal
         open={folderModal.open && folderModal.queueEntry !== null}
         title="Select Drive Folder / Batch"
-        icon={<FolderEdit className="w-4 h-4 text-cyan-400" />}
+        icon={<FolderEdit className="w-5 h-5 text-cyan-500" />}
+        maxWidth="max-w-xl sm:max-w-2xl"
         onClose={() => setFolderModal({ open: false, queueEntry: null, folderPath: '', batchId: '' })}
       >
         <div className="space-y-3 text-xs">
@@ -852,8 +1074,8 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       </Modal>
 
-      {/* Bottom Mobile Tab Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 border-t border-slate-200/90 backdrop-blur-lg px-3 py-2 flex items-center justify-around max-w-md mx-auto shadow-md">
+      {/* Bottom Mobile Tab Bar (Mobile only, hidden on desktop) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 border-t border-slate-200/90 backdrop-blur-lg px-3 py-2 flex items-center justify-around max-w-md mx-auto shadow-md">
         {([
           { id: 'live', icon: Radio, label: 'Live' },
           { id: 'review', icon: CheckCircle2, label: 'Review', badge: unapprovedCount + failedQueueItems.length },

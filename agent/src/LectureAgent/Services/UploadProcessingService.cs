@@ -136,6 +136,35 @@ public class UploadProcessingService : BackgroundService
             // Upload file
             try
             {
+                if (string.IsNullOrWhiteSpace(entry.DriveFolderPath))
+                {
+                    var lectureRepo = scope.ServiceProvider.GetService<ILectureRepository>();
+                    if (lectureRepo != null)
+                    {
+                        var session = await lectureRepo.GetByIdAsync(entry.LectureSessionId);
+                        if (session != null)
+                        {
+                            if (!string.IsNullOrWhiteSpace(session.BatchId))
+                            {
+                                var batchClean = session.BatchId.Replace("/", "-").Replace("\\", "-").Trim();
+                                var subjectClean = !string.IsNullOrWhiteSpace(session.SubjectId)
+                                    ? session.SubjectId.Replace("/", "-").Replace("\\", "-").Trim()
+                                    : null;
+                                entry.DriveFolderPath = subjectClean != null ? $"{batchClean}/{subjectClean}" : batchClean;
+                            }
+                            else
+                            {
+                                var center = string.IsNullOrWhiteSpace(session.CenterId) ? "Center" : session.CenterId.Replace("/", "-").Replace("\\", "-");
+                                var room = string.IsNullOrWhiteSpace(session.RoomId) ? "Room" : session.RoomId.Replace("/", "-").Replace("\\", "-");
+                                var date = session.DetectedStartTime != default ? session.DetectedStartTime.ToString("yyyy-MM-dd") : DateTime.UtcNow.ToString("yyyy-MM-dd");
+                                var batch = !string.IsNullOrWhiteSpace(session.SubjectId) ? session.SubjectId.Replace("/", "-").Replace("\\", "-") : "ExtraLectures";
+                                entry.DriveFolderPath = $"{center}/{room}/{date}/{batch}";
+                            }
+                            await queueService.SaveAsync(entry);
+                        }
+                    }
+                }
+
                 var fileId = await driveUploader.UploadFileAsync(entry, CancellationToken.None);
 
                 // Verify upload

@@ -51,10 +51,9 @@ internal sealed class SettingsForm : Form
         _rootFolderBox.Text = DefaultIfBlank(settings.GoogleDriveRootFolder, "LectureRecordings");
         _credentialsBox.Text = settings.GoogleDriveCredentialsPath;
 
-        Controls.Add(BuildRoot());
         AcceptButton = MakeButton("Save", SaveAndClose, accent: true);
         CancelButton = MakeButton("Cancel", () => { DialogResult = DialogResult.Cancel; Close(); });
-        Controls.Add(BuildButtonRow());
+        Controls.Add(BuildRoot());
     }
 
     private Control BuildRoot()
@@ -67,11 +66,12 @@ internal sealed class SettingsForm : Form
             Margin = Padding.Empty
         };
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 56F));
 
         var scroll = new Panel { AutoScroll = true, Dock = DockStyle.Fill };
         scroll.Controls.Add(BuildBody());
         root.Controls.Add(scroll, 0, 0);
+        root.Controls.Add(BuildButtonRow(), 0, 1);
         return root;
     }
 
@@ -91,6 +91,10 @@ internal sealed class SettingsForm : Form
         body.Controls.Add(MakeRow("Center name", _centerBox));
         body.Controls.Add(MakeRow("Room ID", _roomBox));
 
+        body.Controls.Add(MakeHeading("Background Service"));
+        body.Controls.Add(ServiceControlRow());
+        body.Controls.Add(MakeNote("The background service keeps watching and uploading even when this window is closed."));
+
         body.Controls.Add(MakeHeading("Dashboard"));
         body.Controls.Add(MakeRow("API key", KeyRow()));
         body.Controls.Add(MakeNote("Paste this key once on the phone/tablet login screen. Regenerating it signs every device out."));
@@ -105,6 +109,106 @@ internal sealed class SettingsForm : Form
         body.Controls.Add(MakeRow(string.Empty, SignInRow()));
 
         return body;
+    }
+
+    private Control ServiceControlRow()
+    {
+        var panel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+        var statusLabel = new Label
+        {
+            AutoSize = true,
+            Font = new Font("Segoe UI", 9.5F),
+            Margin = new Padding(0, 8, 10, 8)
+        };
+
+        var actionButton = new Button
+        {
+            AutoSize = true,
+            FlatStyle = FlatStyle.Flat,
+            Padding = new Padding(14, 6, 14, 6),
+            Margin = new Padding(0, 4, 0, 4)
+        };
+        actionButton.FlatAppearance.BorderSize = 0;
+
+        void UpdateServiceState()
+        {
+            var state = AgentServiceControl.GetState();
+            switch (state)
+            {
+                case AgentServiceState.Running:
+                    statusLabel.Text = "● Service is running.";
+                    statusLabel.ForeColor = Color.FromArgb(16, 185, 129);
+                    actionButton.Text = "Restart service";
+                    actionButton.BackColor = Color.FromArgb(238, 235, 248);
+                    actionButton.ForeColor = LabelColor;
+                    actionButton.Visible = true;
+                    break;
+                case AgentServiceState.Stopped:
+                    statusLabel.Text = "● Service is stopped.";
+                    statusLabel.ForeColor = Color.FromArgb(239, 68, 68);
+                    actionButton.Text = "Start service";
+                    actionButton.BackColor = AccentColor;
+                    actionButton.ForeColor = Color.White;
+                    actionButton.Visible = true;
+                    break;
+                case AgentServiceState.NotInstalled:
+                    statusLabel.Text = "● Service is not installed on this PC.";
+                    statusLabel.ForeColor = Color.FromArgb(239, 68, 68);
+                    actionButton.Text = "Install service (elevated)…";
+                    actionButton.BackColor = AccentColor;
+                    actionButton.ForeColor = Color.White;
+                    actionButton.Visible = true;
+                    break;
+                default:
+                    statusLabel.Text = $"● Service status: {state}";
+                    statusLabel.ForeColor = Color.FromArgb(245, 158, 11);
+                    actionButton.Visible = false;
+                    break;
+            }
+        }
+
+        actionButton.Click += async (_, _) =>
+        {
+            actionButton.Enabled = false;
+            var state = AgentServiceControl.GetState();
+            try
+            {
+                if (state == AgentServiceState.NotInstalled)
+                {
+                    ApplyValues();
+                    _settings.Save();
+                    await Task.Run(() => AgentServiceControl.Install((int)_portBox.Value));
+                    MessageBox.Show(this, "Centrix background service has been installed and started.",
+                        "Centrix", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else if (state == AgentServiceState.Stopped)
+                {
+                    await Task.Run(AgentServiceControl.Start);
+                }
+                else
+                {
+                    await Task.Run(AgentServiceControl.Restart);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Service operation failed:\n\n{ex.Message}", "Centrix",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                UpdateServiceState();
+                actionButton.Enabled = true;
+            }
+        };
+
+        UpdateServiceState();
+        panel.Controls.Add(statusLabel, 0, 0);
+        panel.Controls.Add(actionButton, 1, 0);
+        return panel;
     }
 
     private Control FolderPicker()

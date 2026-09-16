@@ -171,9 +171,10 @@ public class LectureSessionService
         session.UpdatedAt = DateTime.UtcNow;
         session.LastStatusChange = DateTime.UtcNow;
 
-        // The batch folder already exists on Google Drive (created by the center);
-        // the uploader searches it by this exact name and never creates folders.
-        session.DriveFolderPath = batchId;
+        // The batch folder and subject subfolder on Google Drive (e.g. 27-AJ451NA 2026/Physics)
+        session.DriveFolderPath = !string.IsNullOrWhiteSpace(subjectId)
+            ? $"{batchId.Trim()}/{subjectId.Trim()}"
+            : batchId.Trim();
 
         await _lectureRepository.UpdateAsync(session);
         await _lectureRepository.SaveChangesAsync();

@@ -18,12 +18,29 @@ using LectureAgent.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
 
+using LectureAgent.Commands;
+using LectureAgent.Configuration;
+
+if (args.Contains(AuthorizeGoogleCommand.Flag))
+{
+    var exitCode = await AuthorizeGoogleCommand.RunAsync();
+    Environment.ExitCode = exitCode;
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Logging — use an absolute path so the Windows service doesn't write to System32
-var logDir = Path.Combine(
-    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-    "LectureAgentApp", "logs");
+// Support running as a Windows Service (SCM lifetime hook & content root setup)
+builder.Host.UseWindowsService();
+
+// Layer user settings from ProgramData on top of shipped defaults
+if (AgentPaths.SharedSettingsFile is { } sharedSettings && File.Exists(sharedSettings))
+{
+    builder.Configuration.AddJsonFile(sharedSettings, optional: true, reloadOnChange: true);
+}
+
+// Logging — use shared ProgramData log folder so desktop app and service share logs
+var logDir = AgentPaths.LogDirectory;
 Directory.CreateDirectory(logDir);
 
 Log.Logger = new LoggerConfiguration()

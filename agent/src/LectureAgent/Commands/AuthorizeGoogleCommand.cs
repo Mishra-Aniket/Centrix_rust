@@ -22,8 +22,25 @@ internal static class AuthorizeGoogleCommand
         try
         {
             var configuration = BuildConfiguration();
-            var credentialsPath = Resolve(configuration["GoogleDrive:CredentialsPath"] ?? "config/google_credentials.json");
-            var tokenPath = Resolve(configuration["GoogleDrive:TokenPath"] ?? "data/google-drive-token");
+            var rawCredsPath = configuration["GoogleDrive:CredentialsPath"] ?? "config/google_credentials.json";
+            var credentialsPath = Resolve(rawCredsPath);
+            if (!File.Exists(credentialsPath) && !File.Exists(credentialsPath + ".protected"))
+            {
+                var sharedCreds = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "LectureAgent", "config", "google_credentials.json");
+                if (File.Exists(sharedCreds) || File.Exists(sharedCreds + ".protected"))
+                {
+                    credentialsPath = sharedCreds;
+                }
+            }
+
+            var rawTokenPath = configuration["GoogleDrive:TokenPath"] ?? "data/google-drive-token";
+            var tokenPath = Resolve(rawTokenPath);
+            if (!Path.IsPathRooted(rawTokenPath) && AgentPaths.SharedRoot != null)
+            {
+                tokenPath = Path.Combine(AgentPaths.SharedRoot, rawTokenPath);
+            }
 
             var protector = new CredentialProtector();
             await using var credentialStream = protector.OpenRead(credentialsPath);

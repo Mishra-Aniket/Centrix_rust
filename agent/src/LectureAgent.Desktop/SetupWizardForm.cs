@@ -51,6 +51,7 @@ internal sealed class SetupWizardForm : Form
         _settings = settings;
 
         Text = "Centrix Setup";
+        Icon = AppPaths.LoadIcon();
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -101,29 +102,66 @@ internal sealed class SetupWizardForm : Form
     {
         var header = new Panel { Dock = DockStyle.Fill, BackColor = HeaderColor };
 
-        _titleLabel.Location = new Point(28, 18);
+        var logoImage = AppPaths.LoadLogoImage();
+        if (logoImage != null)
+        {
+            var logoBox = new PictureBox
+            {
+                Location = new Point(22, 18),
+                Size = new Size(54, 54),
+                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = Color.Transparent,
+                Image = logoImage
+            };
+            header.Controls.Add(logoBox);
+            _titleLabel.Location = new Point(88, 18);
+            _subtitleLabel.Location = new Point(90, 50);
+        }
+        else
+        {
+            _titleLabel.Location = new Point(28, 18);
+            _subtitleLabel.Location = new Point(30, 50);
+        }
+
         _titleLabel.AutoSize = true;
         _titleLabel.Font = new Font("Segoe UI", 15F, FontStyle.Bold);
         _titleLabel.ForeColor = Color.White;
 
-        _subtitleLabel.Location = new Point(30, 50);
         _subtitleLabel.AutoSize = true;
         _subtitleLabel.Font = new Font("Segoe UI", 9F);
         _subtitleLabel.ForeColor = MutedTextColor;
 
-        _stepLabel.Location = new Point(ClientSize.Width - 30, 30);
-        _stepLabel.AutoSize = true;
-        _stepLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        var stepPill = new Panel
+        {
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Location = new Point(ClientSize.Width - 145, 28),
+            Size = new Size(115, 32),
+            BackColor = Color.FromArgb(48, 33, 84),
+            Padding = new Padding(6, 4, 6, 4)
+        };
+        _stepLabel.Dock = DockStyle.Fill;
+        _stepLabel.TextAlign = ContentAlignment.MiddleCenter;
         _stepLabel.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-        _stepLabel.ForeColor = MutedTextColor;
+        _stepLabel.ForeColor = Color.FromArgb(220, 210, 245);
+        stepPill.Controls.Add(_stepLabel);
 
-        header.Controls.AddRange(new Control[] { _titleLabel, _subtitleLabel, _stepLabel });
+        header.Controls.AddRange(new Control[] { _titleLabel, _subtitleLabel, stepPill });
         return header;
     }
 
     private Control BuildFooter()
     {
-        var footer = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(246, 244, 251) };
+        var footer = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = Color.FromArgb(246, 244, 251),
+            Padding = new Padding(24, 10, 24, 10),
+            Margin = Padding.Empty
+        };
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
 
         foreach (var button in new[] { _backButton, _nextButton })
         {
@@ -133,6 +171,7 @@ internal sealed class SetupWizardForm : Form
             button.BackColor = Color.FromArgb(238, 235, 248);
             button.ForeColor = LabelColor;
             button.UseVisualStyleBackColor = false;
+            button.Height = 38;
             button.Click += OnNavigate;
         }
 
@@ -143,19 +182,37 @@ internal sealed class SetupWizardForm : Form
         {
             Text = "Cancel",
             AutoSize = true,
+            Height = 38,
             FlatStyle = FlatStyle.Flat,
-            Padding = new Padding(16, 8, 16, 8)
+            Padding = new Padding(16, 8, 16, 8),
+            BackColor = Color.FromArgb(238, 235, 248),
+            ForeColor = LabelColor,
+            UseVisualStyleBackColor = false
         };
         cancel.FlatAppearance.BorderSize = 0;
         cancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
 
-        _backButton.Location = new Point(24, 14);
-        cancel.Location = new Point(ClientSize.Width - 24 - cancel.PreferredSize.Width, 14);
-        cancel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        _nextButton.Location = new Point(ClientSize.Width - 24 - cancel.PreferredSize.Width - 12 - _nextButton.PreferredSize.Width, 14);
-        _nextButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        var leftPanel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            AutoSize = true,
+            Margin = Padding.Empty
+        };
+        leftPanel.Controls.Add(_backButton);
 
-        footer.Controls.AddRange(new Control[] { _backButton, _nextButton, cancel });
+        var rightPanel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            AutoSize = true,
+            Margin = Padding.Empty
+        };
+        rightPanel.Controls.Add(cancel);
+        rightPanel.Controls.Add(_nextButton);
+
+        footer.Controls.Add(leftPanel, 0, 0);
+        footer.Controls.Add(rightPanel, 1, 0);
         return footer;
     }
 
@@ -249,38 +306,54 @@ internal sealed class SetupWizardForm : Form
         {
             ColumnCount = 1,
             RowCount = 1,
-            Padding = new Padding(28, 24, 28, 16),
+            Padding = new Padding(28, 20, 28, 16),
             AutoSize = true
         };
 
-        var bullets = new StringBuilder();
-        bullets.AppendLine("Watch the recordings folder on this PC");
-        bullets.AppendLine("Match each video and note to the batch timetable");
-        bullets.AppendLine("Upload everything to the center's Google Drive folders");
-        bullets.AppendLine("Give you a dashboard you can open from a phone or tablet on the same WiFi");
-
         var intro = new Label
         {
-            Text = "Setup takes about a minute. You will choose:",
+            Text = "Centrix automatically captures, organizes, and uploads classroom lectures:",
             AutoSize = true,
+            Font = new Font("Segoe UI", 10F, FontStyle.Bold),
             ForeColor = LabelColor,
-            Margin = new Padding(0, 0, 0, 10)
-        };
-
-        var list = new Label
-        {
-            Text = "•  " + bullets.ToString().Replace("\n", "\n•  ").TrimEnd(' ', '\n', '•'),
-            AutoSize = true,
-            ForeColor = LabelColor,
-            Font = new Font("Segoe UI", 9.5F),
-            Padding = new Padding(8, 0, 0, 0),
             Margin = new Padding(0, 0, 0, 12)
         };
 
-        var note = MakeNote("Nothing is uploaded until setup is finished. The old manual setup (editing JSON files) is not needed anymore.");
+        var card = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            ColumnCount = 1,
+            AutoSize = true,
+            BackColor = Color.FromArgb(248, 246, 253),
+            Padding = new Padding(16, 12, 16, 12),
+            Margin = new Padding(0, 0, 0, 14)
+        };
+
+        string[] features =
+        {
+            "✔  Watches classroom recording folders automatically (including all subfolders)",
+            "✔  Offline-first resilience: recordings buffer safely locally during poor/no internet",
+            "✔  Auto-syncs lectures to the center's Google Drive folders once internet restores",
+            "✔  Live local dashboard accessible via classroom PC, phone, or tablet on local WiFi",
+            "✔  Runs 24x7 as a silent Windows background service (no manual login required)"
+        };
+
+        foreach (var feat in features)
+        {
+            card.Controls.Add(new Label
+            {
+                Text = feat,
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9.25F),
+                ForeColor = Color.FromArgb(40, 32, 64),
+                Margin = new Padding(0, 3, 0, 3)
+            });
+        }
+
+        var note = MakeNote("Setup takes about 1 minute. Nothing is uploaded until setup completes.");
 
         panel.Controls.Add(intro);
-        panel.Controls.Add(list);
+        panel.Controls.Add(card);
         panel.Controls.Add(note);
         return panel;
     }
@@ -385,12 +458,89 @@ internal sealed class SetupWizardForm : Form
         row.Controls.Add(browse, 1, 0);
         panel.Controls.Add(row);
 
+        var signInButton = new Button
+        {
+            Text = "Sign in to Google now…",
+            AutoSize = true,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = AccentColor,
+            ForeColor = Color.White,
+            Padding = new Padding(14, 7, 14, 7),
+            Margin = new Padding(0, 8, 10, 0)
+        };
+        signInButton.FlatAppearance.BorderSize = 0;
+        var signInStatus = new Label
+        {
+            AutoSize = true,
+            ForeColor = MutedTextColor,
+            Font = new Font("Segoe UI", 8.5F),
+            Margin = new Padding(0, 14, 0, 0)
+        };
+
+        signInButton.Click += async (_, _) =>
+        {
+            if (_credentialsBox.Text.Trim().Length > 0)
+            {
+                var destination = Path.Combine(AppPaths.SharedRoot, "config", "google_credentials.json");
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                File.Copy(_credentialsBox.Text.Trim(), destination, overwrite: true);
+                _settings.GoogleDriveCredentialsPath = destination;
+            }
+            if (_rootFolderBox.Text.Trim().Length > 0)
+            {
+                _settings.GoogleDriveRootFolder = _rootFolderBox.Text.Trim();
+            }
+            _settings.GoogleDriveEnabled = _driveEnabled.Checked;
+            _settings.Save();
+
+            if (!File.Exists(AppPaths.AgentExecutable))
+            {
+                MessageBox.Show(this, "The agent program was not found, so sign-in cannot start yet.",
+                    "Centrix Setup", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            signInButton.Enabled = false;
+            signInStatus.Text = "Opening browser for Google sign-in…";
+            try
+            {
+                var exitCode = await Task.Run(() =>
+                {
+                    var startInfo = new ProcessStartInfo(AppPaths.AgentExecutable, "--authorize-google")
+                    {
+                        UseShellExecute = true
+                    };
+                    using var process = Process.Start(startInfo);
+                    process?.WaitForExit();
+                    return process?.ExitCode ?? -1;
+                });
+
+                signInStatus.Text = exitCode == 0
+                    ? "Signed in successfully!"
+                    : "Sign-in did not complete. Check credentials and retry.";
+            }
+            catch
+            {
+                signInStatus.Text = "Could not launch sign-in helper.";
+            }
+            finally
+            {
+                signInButton.Enabled = true;
+            }
+        };
+
+        var signInRow = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
+        signInRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        signInRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        signInRow.Controls.Add(signInButton, 0, 0);
+        signInRow.Controls.Add(signInStatus, 1, 0);
+        panel.Controls.Add(signInRow);
+
         SyncDriveControls(this, EventArgs.Empty);
         _driveEnabled.CheckedChanged += SyncDriveControls;
 
         panel.Controls.Add(MakeNote(
-            "Leave this empty if the file was already installed with this PC. The first upload opens a Google " +
-            "sign-in page once; you can also do it now from Settings later."));
+            "Leave credentials empty if already installed on this PC. You can also sign in or change this anytime from Settings."));
         return panel;
     }
 
@@ -402,17 +552,28 @@ internal sealed class SetupWizardForm : Form
 
     private Control BuildSummaryStep()
     {
-        var panel = new TableLayoutPanel { ColumnCount = 1, AutoSize = true, Padding = new Padding(28, 24, 28, 16) };
+        var panel = new TableLayoutPanel { ColumnCount = 1, AutoSize = true, Padding = new Padding(28, 20, 28, 16) };
+
+        var card = new Panel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            BackColor = Color.FromArgb(248, 246, 253),
+            Padding = new Padding(16, 12, 16, 12),
+            Margin = new Padding(0, 0, 0, 14)
+        };
 
         var summary = new Label
         {
             Text = BuildSummaryText(),
             AutoSize = true,
+            Dock = DockStyle.Top,
             ForeColor = LabelColor,
-            Font = new Font("Segoe UI", 9.5F),
-            Margin = new Padding(0, 0, 0, 14)
+            Font = new Font("Consolas", 9.25F),
+            Margin = Padding.Empty
         };
-        panel.Controls.Add(summary);
+        card.Controls.Add(summary);
+        panel.Controls.Add(card);
 
         var serviceMissing = AgentServiceControl.GetState() == AgentServiceState.NotInstalled;
         _installService.Visible = serviceMissing;

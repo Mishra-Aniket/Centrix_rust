@@ -1,6 +1,7 @@
 namespace LectureAgent.Services;
 
 using LectureAgent.Application.Services;
+using LectureAgent.Domain.Entities;
 using LectureAgent.Domain.Enums;
 using LectureAgent.Domain.Services;
 using Microsoft.Extensions.Configuration;
@@ -215,6 +216,38 @@ public class FileMonitoringService : BackgroundService
             var detectedEnd = e.DetectedTime;
             var detectedStart = detectedEnd.AddSeconds(-durationSeconds);
 
+            // ── Minimum duration gate ──────────────────────────────────────
+            // Skip short recordings (mic tests, accidental starts) from upload.
+            // PDFs are always allowed — they don't have a meaningful duration.
+            var minDurationMinutes = _config.GetValue("FileWatcher:MinimumDurationMinutes", 10);
+            if (minDurationMinutes > 0
+                && e.FileType.Equals("VIDEO", StringComparison.OrdinalIgnoreCase)
+                && durationSeconds < minDurationMinutes * 60)
+            {
+                var mins = durationSeconds / 60;
+                var secs = durationSeconds % 60;
+                _logger.LogInformation(
+                    "Recording is {Min}m {Sec}s (< {Threshold} min threshold); skipped from upload: {Path}",
+                    mins, secs, minDurationMinutes, e.FilePath);
+
+                // Still create a session so the dashboard shows what was skipped
+                var shortSession = await lectureService.CreateSessionAsync(
+                    organizationId: _organizationId,
+                    centerId: _centerId,
+                    roomId: _roomId,
+                    deviceId: _deviceId,
+                    videoFilePath: e.FilePath,
+                    videoFileSize: e.FileSizeBytes,
+                    detectedStart: detectedStart,
+                    detectedEnd: detectedEnd);
+
+                await lectureService.UpdateStatusAsync(
+                    shortSession.LectureSessionId,
+                    LectureStatus.ShortClip,
+                    $"Recording duration {mins}m {secs}s is below {minDurationMinutes} min threshold; not uploaded");
+                return;
+            }
+
             // Create lecture session
             var session = await lectureService.CreateSessionAsync(
                 organizationId: _organizationId,
@@ -269,13 +302,20 @@ public class FileMonitoringService : BackgroundService
 
                 if (string.IsNullOrWhiteSpace(session.BatchId))
                 {
-                    _logger.LogWarning(
-                        $"No batch assigned for {session.LectureSessionId}; holding back from upload " +
-                        "(batch folders on Drive already exist - assign a batch on the dashboard first)");
-                    return;
+                    var queueUnmatched = _config.GetValue("UploadQueue:QueueUnmatchedFiles", true);
+                    if (!queueUnmatched)
+                    {
+                        _logger.LogWarning(
+                            $"No batch assigned for {session.LectureSessionId}; holding back from upload " +
+                            "(assign a batch on the dashboard first)");
+                        return;
+                    }
                 }
 
-                session.DriveFolderPath = session.BatchId;
+                if (string.IsNullOrWhiteSpace(session.DriveFolderPath))
+                {
+                    session.DriveFolderPath = BuildDriveFolderPath(session, _config);
+                }
 
                 var queueEntry = await queueService.EnqueueFileAsync(
                     lectureSessionId: session.LectureSessionId,
@@ -295,7 +335,7 @@ public class FileMonitoringService : BackgroundService
                     return;
                 }
 
-                _logger.LogInformation($"Enqueued file: {queueEntry.QueueEntryId} -> Google Drive batch folder: {session.DriveFolderPath}");
+                _logger.LogInformation($"Enqueued file: {queueEntry.QueueEntryId} -> Google Drive folder: {session.DriveFolderPath}");
             }
             else
             {
@@ -310,5 +350,61 @@ public class FileMonitoringService : BackgroundService
         {
             _processingFiles.TryRemove(e.FilePath, out _);
         }
+    }
+
+    private static string BuildDriveFolderPath(LectureSession session, IConfiguration configuration)
+    {
+        var pattern = configuration["GoogleDrive:FolderStructure"];
+        if (string.IsNullOrWhiteSpace(pattern))
+        {
+            // Default: if BatchId is assigned, place inside {Batch}/{Subject} (or just {Batch} if subject is unknown);
+            // otherwise auto-categorize by Center/Room/Date/Extra
+            if (!string.IsNullOrWhiteSpace(session.BatchId))
+            {
+                var batchName = SanitizeSegment(session.BatchId, "Batch");
+                return !string.IsNullOrWhiteSpace(session.SubjectId)
+                    ? $"{batchName}/{SanitizeSegment(session.SubjectId, "Subject")}"
+                    : batchName;
+            }
+
+            pattern = "{Center}/{Room}/{Date}/{Batch}";
+        }
+
+        var center = SanitizeSegment(session.CenterId, "Center");
+        var room = SanitizeSegment(session.RoomId, "Room");
+        var date = session.DetectedStartTime != default
+            ? session.DetectedStartTime.ToString("yyyy-MM-dd")
+            : DateTime.UtcNow.ToString("yyyy-MM-dd");
+
+        var batch = !string.IsNullOrWhiteSpace(session.BatchId)
+            ? SanitizeSegment(session.BatchId, "Batch")
+            : (!string.IsNullOrWhiteSpace(session.SubjectId)
+                ? SanitizeSegment(session.SubjectId, "Extra")
+                : "ExtraLectures");
+
+        var subject = !string.IsNullOrWhiteSpace(session.SubjectId)
+            ? SanitizeSegment(session.SubjectId, "General")
+            : "General";
+
+        if (string.Equals(pattern.Trim(), "{Batch}", StringComparison.OrdinalIgnoreCase))
+        {
+            return !string.IsNullOrWhiteSpace(session.SubjectId) ? $"{batch}/{subject}" : batch;
+        }
+
+        return pattern
+            .Replace("{Center}", center)
+            .Replace("{Room}", room)
+            .Replace("{Date}", date)
+            .Replace("{Batch}", batch)
+            .Replace("{Subject}", subject)
+            .Trim('/', '\\');
+    }
+
+    private static string SanitizeSegment(string? value, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return fallback;
+
+        return value.Replace("/", "-").Replace("\\", "-").Trim();
     }
 }

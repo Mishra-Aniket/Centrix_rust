@@ -10,15 +10,20 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>LectureAgent-Setup</AssemblyName>
+    <AssemblyName>Centrix-Setup</AssemblyName>
     <RootNamespace>LectureAgent.Setup</RootNamespace>
     <ApplicationIcon>setup.ico</ApplicationIcon>
+    <Product>Centrix</Product>
+    <AssemblyTitle>Centrix Setup</AssemblyTitle>
+    <Company>PhysicsWallah</Company>
+    <Version>1.0.0</Version>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Produced by installer/build-setup.sh from installer/stage (agent + app). -->
     <EmbeddedResource Include="payload.zip" />
+    <EmbeddedResource Include="setup.ico" />
   </ItemGroup>
 
 </Project>

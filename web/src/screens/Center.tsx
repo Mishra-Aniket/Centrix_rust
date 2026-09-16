@@ -51,24 +51,24 @@ export function CenterScreen({ overview, busy, loading, onRefresh, onSaveRoom, o
       </div>
 
       {/* Center-wide totals */}
-      <div className="grid grid-cols-4 gap-2">
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 text-center shadow-xs">
-          <p className="text-[10px] text-slate-500 font-medium">Live</p>
-          <p className={`text-lg font-bold ${liveCount === overview.length && overview.length > 0 ? 'text-emerald-700' : 'text-amber-600'}`}>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 text-center shadow-xs">
+          <p className="text-xs text-slate-500 font-medium">Live</p>
+          <p className={`text-xl font-bold ${liveCount === overview.length && overview.length > 0 ? 'text-emerald-700' : 'text-amber-600'}`}>
             {liveCount}/{overview.length}
           </p>
         </div>
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 text-center shadow-xs">
-          <p className="text-[10px] text-slate-500 font-medium">Uploading</p>
-          <p className="text-lg font-bold text-cyan-700">{totalUploading}</p>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 text-center shadow-xs">
+          <p className="text-xs text-slate-500 font-medium">Uploading</p>
+          <p className="text-xl font-bold text-cyan-700">{totalUploading}</p>
         </div>
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 text-center shadow-xs">
-          <p className="text-[10px] text-slate-500 font-medium">Failed</p>
-          <p className={`text-lg font-bold ${totalFailed > 0 ? 'text-red-600' : 'text-slate-800'}`}>{totalFailed}</p>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 text-center shadow-xs">
+          <p className="text-xs text-slate-500 font-medium">Failed</p>
+          <p className={`text-xl font-bold ${totalFailed > 0 ? 'text-red-600' : 'text-slate-800'}`}>{totalFailed}</p>
         </div>
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 text-center shadow-xs">
-          <p className="text-[10px] text-slate-500 font-medium">Missing</p>
-          <p className={`text-lg font-bold ${totalMissing > 0 ? 'text-amber-600' : 'text-slate-800'}`}>{totalMissing}</p>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 text-center shadow-xs">
+          <p className="text-xs text-slate-500 font-medium">Missing</p>
+          <p className={`text-xl font-bold ${totalMissing > 0 ? 'text-amber-600' : 'text-slate-800'}`}>{totalMissing}</p>
         </div>
       </div>
 
@@ -78,16 +78,16 @@ export function CenterScreen({ overview, busy, loading, onRefresh, onSaveRoom, o
       </ActionButton>
 
       {overview.length === 0 ? (
-        <Card className="text-center text-xs text-slate-500 space-y-2 p-6">
-          <Building2 className="w-8 h-8 text-slate-400 mx-auto" />
-          <p className="font-bold text-slate-800">No other rooms linked yet</p>
-          <p className="text-[11px] leading-relaxed text-slate-500">
+        <Card className="text-center text-xs text-slate-500 space-y-2 p-8">
+          <Building2 className="w-10 h-10 text-slate-400 mx-auto" />
+          <p className="font-bold text-slate-800 text-sm">No other rooms linked yet</p>
+          <p className="text-xs leading-relaxed text-slate-500 max-w-md mx-auto">
             Install the agent on each classroom PC (using the same package with a unique Room ID), then
             add that PC's URL and API key here — you can monitor all rooms in one place.
           </p>
         </Card>
       ) : (
-        <div className="space-y-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {overview.map((room) => (
             <div key={room.name} className="bg-white border border-slate-200/90 rounded-2xl p-3.5 space-y-2 shadow-sm">
               <div className="flex items-center justify-between gap-2">

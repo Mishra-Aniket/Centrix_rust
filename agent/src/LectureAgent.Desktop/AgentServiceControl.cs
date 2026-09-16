@@ -98,6 +98,7 @@ internal static class AgentServiceControl
             chcp 437 >nul
             sc create {ServiceName} binpath= "{AgentExecutablePath}" start= auto
             sc description {ServiceName} "Watches the recordings folder and uploads lectures to Google Drive."
+            sc failure {ServiceName} reset= 86400 actions= restart/5000/restart/10000/restart/60000
             sc sdset {ServiceName} D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;RPWPDTLO;;;IU)
             netsh advfirewall firewall delete rule name="Centrix Dashboard" >nul 2>&1
             netsh advfirewall firewall add rule name="Centrix Dashboard" dir=in action=allow protocol=TCP localport={dashboardPort}

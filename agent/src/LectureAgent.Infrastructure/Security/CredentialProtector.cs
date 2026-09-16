@@ -133,14 +133,28 @@ public sealed class CredentialProtector : ICredentialProtector
             if (!OperatingSystem.IsWindows())
                 throw new PlatformNotSupportedException($"'{protectedPath}' is DPAPI-protected on Windows and cannot be read here");
 
-            var payload = Convert.FromBase64String(Encoding.ASCII.GetString(raw[WindowsMarker.Length..]));
-            return new MemoryStream(ProtectedData.Unprotect(payload, optionalEntropy: null, DataProtectionScope.LocalMachine));
+            return DecodeWindows(raw[WindowsMarker.Length..]);
         }
 
         if (StartsWith(raw, PlainMarker))
             return new MemoryStream(raw[PlainMarker.Length..]);
 
         throw new InvalidOperationException($"Unrecognized protected-file format: {protectedPath}");
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static Stream DecodeWindows(byte[] payloadBytes)
+    {
+        try
+        {
+            return new MemoryStream(ProtectedData.Unprotect(payloadBytes, optionalEntropy: null, DataProtectionScope.LocalMachine));
+        }
+        catch (CryptographicException)
+        {
+            var text = Encoding.ASCII.GetString(payloadBytes);
+            var payload = Convert.FromBase64String(text);
+            return new MemoryStream(ProtectedData.Unprotect(payload, optionalEntropy: null, DataProtectionScope.LocalMachine));
+        }
     }
 
     private static bool StartsWith(byte[] raw, string marker)

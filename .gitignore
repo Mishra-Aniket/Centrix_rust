@@ -16,6 +16,10 @@ node_modules/
 dist/
 **/dist/
 
+# Rust / Tauri Build artifacts
+target/
+**/target/
+
 # SQLite Databases & Local Storage
 *.db
 *.db-*

@@ -212,18 +212,18 @@ export function Modal({
   if (!mounted && !open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end items-center sm:p-4 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex flex-col justify-end sm:justify-center items-center p-0 sm:p-6 overflow-hidden">
       {/* Backdrop */}
       <div
         ref={backdropRef}
         onClick={handleDismiss}
-        className={`fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity duration-240 ease-out ${
+        className={`fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity duration-240 ease-out ${
           animating && !closing ? 'opacity-100' : 'opacity-0'
         }`}
         aria-hidden="true"
       />
 
-      {/* Bottom Sheet Modal */}
+      {/* Sheet / Dialog Modal */}
       <div
         ref={sheetRef}
         onTouchStart={(e) => onDragStart(e.touches[0].clientY, e.target)}
@@ -248,29 +248,28 @@ export function Modal({
           transform: animating && !closing ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)',
           transition: isDraggingRef.current ? 'none' : 'transform 260ms cubic-bezier(0.32, 0.72, 0, 1)',
         }}
-        className={`relative z-10 w-full ${maxWidth} bg-white border-t sm:border border-slate-200/90 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh] overflow-hidden will-change-transform`}
+        className={`relative z-10 w-full ${maxWidth} bg-white border-t sm:border border-slate-200/90 rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] overflow-hidden will-change-transform`}
       >
-        {/* Drag Handle Bar */}
+        {/* Drag Handle Bar (Mobile only) */}
         <div
           data-drag-handle
-          className="w-full pt-3 pb-1 flex flex-col items-center justify-center cursor-grab active:cursor-grabbing select-none touch-none"
+          className="sm:hidden w-full pt-3 pb-1 flex flex-col items-center justify-center cursor-grab active:cursor-grabbing select-none touch-none"
         >
           <div className="w-12 h-1.5 bg-slate-300 rounded-full hover:bg-slate-400 transition-colors" />
         </div>
 
         {/* Header */}
         <div
-          data-drag-handle
-          className="flex items-center justify-between px-5 py-2.5 border-b border-slate-100 select-none cursor-grab active:cursor-grabbing"
+          className="flex items-center justify-between px-5 sm:px-6 py-3.5 border-b border-slate-100 select-none"
         >
-          <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+          <h3 className="font-bold text-sm sm:text-base text-slate-900 flex items-center gap-2.5">
             {icon}
             {title}
           </h3>
           <button
             type="button"
             onClick={handleDismiss}
-            className="p-1.5 -mr-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 active:scale-95 transition"
+            className="p-1.5 -mr-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:scale-95 transition"
             aria-label="Close"
           >
             <X className="w-4 h-4" />

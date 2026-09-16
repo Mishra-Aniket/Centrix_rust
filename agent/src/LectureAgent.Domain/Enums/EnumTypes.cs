@@ -23,7 +23,8 @@ public enum LectureStatus
     Corrected = 16,
     Rejected = 17,
     Archived = 18,
-    Duplicate = 19
+    Duplicate = 19,
+    ShortClip = 20
 }
 
 /// <summary>

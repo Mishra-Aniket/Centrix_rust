@@ -35,6 +35,38 @@ internal sealed class MainForm : Form
     private readonly TableLayoutPanel _offlinePanel;
     private readonly Label _offlineTitle = new();
     private readonly Label _offlineDetail = new();
+    private readonly Button _startAgentButton = new()
+    {
+        Text = "Start agent",
+        AutoSize = true,
+        FlatStyle = FlatStyle.Flat,
+        BackColor = AccentColor,
+        ForeColor = Color.White,
+        Padding = new Padding(14, 7, 14, 7),
+        Margin = new Padding(0, 0, 10, 0)
+    };
+    private readonly Button _installServiceButton = new()
+    {
+        Text = "Install background service",
+        AutoSize = true,
+        FlatStyle = FlatStyle.Flat,
+        BackColor = AccentColor,
+        ForeColor = Color.White,
+        Padding = new Padding(14, 7, 14, 7),
+        Margin = new Padding(0, 0, 10, 0),
+        Visible = false
+    };
+    private readonly Button _setupWizardButton = new()
+    {
+        Text = "Run setup wizard",
+        AutoSize = true,
+        FlatStyle = FlatStyle.Flat,
+        BackColor = Color.FromArgb(238, 235, 248),
+        ForeColor = Color.FromArgb(51, 41, 82),
+        Padding = new Padding(14, 7, 14, 7),
+        Margin = new Padding(0, 0, 10, 0),
+        Visible = false
+    };
 
     private AgentSettings _settings = AgentSettings.Load();
     private string _injectedScriptId = string.Empty;
@@ -105,26 +137,64 @@ internal sealed class MainForm : Form
 
         var info = new Panel { Dock = DockStyle.Fill, BackColor = HeaderColor };
 
+        var logoImage = AppPaths.LoadLogoImage();
+        int textLeft = 0;
+        if (logoImage != null)
+        {
+            var logoBox = new PictureBox
+            {
+                Location = new Point(0, 11),
+                Size = new Size(42, 42),
+                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = Color.Transparent,
+                Image = logoImage
+            };
+            info.Controls.Add(logoBox);
+            textLeft = 50;
+        }
+
+        var topRow = new FlowLayoutPanel
+        {
+            Location = new Point(textLeft, 10),
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            BackColor = HeaderColor,
+            WrapContents = false,
+            Margin = Padding.Empty
+        };
+
+        var brandLabel = new Label
+        {
+            Text = "Centrix",
+            AutoSize = true,
+            Font = new Font("Segoe UI", 12F, FontStyle.Bold),
+            ForeColor = Color.White,
+            Margin = new Padding(0, 0, 10, 0)
+        };
+
         _statusDot.AutoSize = true;
         _statusDot.Text = "●";
-        _statusDot.Font = new Font("Segoe UI", 12F);
+        _statusDot.Font = new Font("Segoe UI", 10F);
         _statusDot.ForeColor = WarningColor;
-        _statusDot.Location = new Point(0, 11);
+        _statusDot.Margin = new Padding(0, 2, 3, 0);
 
         _statusLabel.AutoSize = true;
         _statusLabel.Text = "Checking…";
-        _statusLabel.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+        _statusLabel.Font = new Font("Segoe UI", 10.5F, FontStyle.Bold);
         _statusLabel.ForeColor = Color.White;
-        _statusLabel.Location = new Point(20, 12);
+        _statusLabel.Margin = new Padding(0, 1, 0, 0);
+
+        topRow.Controls.Add(brandLabel);
+        topRow.Controls.Add(_statusDot);
+        topRow.Controls.Add(_statusLabel);
 
         _detailLabel.AutoSize = true;
         _detailLabel.Text = "Connecting to the agent on this PC…";
-        _detailLabel.Font = new Font("Segoe UI", 8.5F);
+        _detailLabel.Font = new Font("Segoe UI", 8.25F);
         _detailLabel.ForeColor = MutedTextColor;
-        _detailLabel.Location = new Point(2, 37);
+        _detailLabel.Location = new Point(textLeft + 2, 37);
 
-        info.Controls.Add(_statusDot);
-        info.Controls.Add(_statusLabel);
+        info.Controls.Add(topRow);
         info.Controls.Add(_detailLabel);
 
         var buttons = new FlowLayoutPanel
@@ -169,33 +239,74 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 3,
-            BackColor = Color.White
+            BackColor = Color.FromArgb(249, 248, 252)
         };
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
 
-        var block = new FlowLayoutPanel
+        var card = new TableLayoutPanel
         {
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            FlowDirection = FlowDirection.TopDown,
+            ColumnCount = 1,
             Anchor = AnchorStyles.None,
-            WrapContents = false
+            BackColor = Color.White,
+            Padding = new Padding(36, 28, 36, 28),
+            Width = 640
         };
 
+        var logoImage = AppPaths.LoadLogoImage();
+        if (logoImage != null)
+        {
+            var logoBox = new PictureBox
+            {
+                Size = new Size(64, 64),
+                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = Color.Transparent,
+                Image = logoImage,
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(0, 0, 0, 14)
+            };
+            card.Controls.Add(logoBox);
+        }
+
         _offlineTitle.AutoSize = true;
-        _offlineTitle.Text = "Connecting to the agent…";
-        _offlineTitle.Font = new Font("Segoe UI", 15F, FontStyle.Bold);
-        _offlineTitle.ForeColor = Color.FromArgb(30, 27, 45);
-        _offlineTitle.Margin = new Padding(3, 3, 3, 8);
+        _offlineTitle.Text = "Connecting to Centrix Agent…";
+        _offlineTitle.Font = new Font("Segoe UI", 16F, FontStyle.Bold);
+        _offlineTitle.ForeColor = Color.FromArgb(27, 16, 51);
+        _offlineTitle.Margin = new Padding(0, 0, 0, 8);
 
         _offlineDetail.AutoSize = true;
-        _offlineDetail.MaximumSize = new Size(620, 0);
+        _offlineDetail.MaximumSize = new Size(560, 0);
         _offlineDetail.Text = "This takes a few seconds after the PC starts.";
         _offlineDetail.Font = new Font("Segoe UI", 9.5F);
         _offlineDetail.ForeColor = Color.FromArgb(94, 90, 112);
-        _offlineDetail.Margin = new Padding(3, 0, 3, 18);
+        _offlineDetail.Margin = new Padding(0, 0, 0, 18);
+
+        var badges = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = new Padding(0, 0, 0, 20),
+            WrapContents = false
+        };
+
+        string[] highlights = { "🛡️ 24x7 Silent Service", "📂 Offline-Safe Buffer", "☁️ Google Drive Sync" };
+        foreach (var h in highlights)
+        {
+            var badge = new Label
+            {
+                Text = h,
+                AutoSize = true,
+                BackColor = Color.FromArgb(243, 240, 252),
+                ForeColor = Color.FromArgb(70, 48, 120),
+                Font = new Font("Segoe UI", 8.25F, FontStyle.Bold),
+                Padding = new Padding(8, 4, 8, 4),
+                Margin = new Padding(0, 0, 8, 0)
+            };
+            badges.Controls.Add(badge);
+        }
 
         var actions = new FlowLayoutPanel
         {
@@ -206,18 +317,21 @@ internal sealed class MainForm : Form
             Margin = Padding.Empty
         };
 
-        var start = new Button
+        _installServiceButton.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+        _installServiceButton.FlatAppearance.BorderSize = 0;
+        _installServiceButton.Click += async (_, _) => await InstallServiceAsync();
+
+        _setupWizardButton.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+        _setupWizardButton.FlatAppearance.BorderSize = 0;
+        _setupWizardButton.Click += async (_, _) =>
         {
-            Text = "Start agent",
-            AutoSize = true,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = AccentColor,
-            ForeColor = Color.White,
-            Padding = new Padding(14, 7, 14, 7),
-            Margin = new Padding(0, 0, 10, 0)
+            RunFirstRunSetup();
+            await PollAsync();
         };
-        start.FlatAppearance.BorderSize = 0;
-        start.Click += async (_, _) => await StartAgentAsync();
+
+        _startAgentButton.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+        _startAgentButton.FlatAppearance.BorderSize = 0;
+        _startAgentButton.Click += async (_, _) => await StartAgentAsync();
 
         var logs = new Button
         {
@@ -231,14 +345,17 @@ internal sealed class MainForm : Form
         logs.FlatAppearance.BorderSize = 0;
         logs.Click += (_, _) => OpenFolder(AppPaths.LogDirectory);
 
-        actions.Controls.Add(start);
+        actions.Controls.Add(_installServiceButton);
+        actions.Controls.Add(_setupWizardButton);
+        actions.Controls.Add(_startAgentButton);
         actions.Controls.Add(logs);
 
-        block.Controls.Add(_offlineTitle);
-        block.Controls.Add(_offlineDetail);
-        block.Controls.Add(actions);
+        card.Controls.Add(_offlineTitle);
+        card.Controls.Add(_offlineDetail);
+        card.Controls.Add(badges);
+        card.Controls.Add(actions);
 
-        panel.Controls.Add(block, 0, 1);
+        panel.Controls.Add(card, 0, 1);
         return panel;
     }
 
@@ -444,10 +561,13 @@ internal sealed class MainForm : Form
                 _detailLabel.Text = "The Centrix background service is missing.";
                 _trayStatusItem.Text = "Service not installed";
                 _tray.Text = "Centrix — service not installed";
+                _installServiceButton.Visible = true;
+                _setupWizardButton.Visible = true;
+                _startAgentButton.Visible = false;
                 ShowOffline(
                     "Background service is not installed",
-                    "Run the Centrix installer again to reinstall the service that watches the "
-                    + "recordings folder and uploads to Google Drive.");
+                    "The service that watches recordings and uploads to Google Drive is not installed on this PC. "
+                    + "Click below to install it, or run the setup wizard to configure your room and Google Drive.");
                 break;
 
             case AgentServiceState.Running:
@@ -456,6 +576,9 @@ internal sealed class MainForm : Form
                 _detailLabel.Text = "The agent is starting up.";
                 _trayStatusItem.Text = "Starting…";
                 _tray.Text = "Centrix — starting";
+                _installServiceButton.Visible = false;
+                _setupWizardButton.Visible = false;
+                _startAgentButton.Visible = false;
                 ShowOffline("Starting the agent…", "This takes a few seconds after the PC starts.");
                 break;
 
@@ -464,6 +587,9 @@ internal sealed class MainForm : Form
                 _detailLabel.Text = "Nothing is being watched or uploaded right now.";
                 _trayStatusItem.Text = "Stopped";
                 _tray.Text = "Centrix — stopped";
+                _installServiceButton.Visible = false;
+                _setupWizardButton.Visible = false;
+                _startAgentButton.Visible = true;
                 ShowOffline(
                     "Agent is not running",
                     "Recordings are not being detected or uploaded. Start the agent to resume.");
@@ -507,6 +633,24 @@ internal sealed class MainForm : Form
         _web.Visible = false;
         _offlinePanel.Visible = true;
         _offlinePanel.BringToFront();
+    }
+
+    private async Task InstallServiceAsync()
+    {
+        SetStatus("Installing…", WarningColor);
+        try
+        {
+            await Task.Run(() => AgentServiceControl.Install(_settings.Port));
+            MessageBox.Show(this, "Centrix background service has been installed and started successfully.",
+                "Centrix", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Could not install the background service:\n\n{ex.Message}",
+                "Centrix", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        await PollAsync();
     }
 
     private async Task StartAgentAsync()

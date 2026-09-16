@@ -5,7 +5,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <AssemblyName>LectureAgentApp</AssemblyName>
+    <AssemblyName>Centrix</AssemblyName>
     <RootNamespace>LectureAgent.Desktop</RootNamespace>
     <ApplicationIcon>Assets/app.ico</ApplicationIcon>
     <Product>Centrix</Product>
@@ -23,9 +23,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Assets/app.ico">
+    <Content Include="Assets/app.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+    <Content Include="Assets/app.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+    <EmbeddedResource Include="Assets/app.ico" />
+    <EmbeddedResource Include="Assets/app.png" />
   </ItemGroup>
 
 </Project>

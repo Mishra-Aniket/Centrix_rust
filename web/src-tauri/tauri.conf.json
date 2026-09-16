@@ -1,0 +1,37 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "identifier": "com.pw.centrix",
+  "productName": "Centrix",
+  "version": "1.0.0",
+  "build": {
+    "devUrl": "http://localhost:5202",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Centrix",
+        "width": 1200,
+        "height": 800,
+        "center": true,
+        "decorations": true
+      }
+    ],
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "tooltip": "Centrix"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "resources": [
+      "resources/*"
+    ]
+  },
+  "plugins": {}
+}

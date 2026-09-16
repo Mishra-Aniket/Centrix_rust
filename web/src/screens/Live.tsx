@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   AlertCircle,
   Ban,
@@ -8,14 +8,13 @@ import {
   CloudUpload,
   FileText,
   Folder,
-  MonitorX,
   PauseCircle,
   RotateCcw,
   Video,
 } from 'lucide-react';
 import { RoomSelector } from '../components/RoomSelector';
 import type { AgentInfo, ControlState, HealthStatus, MissingSlot, MonitorSnapshot, QueueEntry, TimetableEntry } from '../types';
-import { Card, Pill } from '../ui';
+import { Pill } from '../ui';
 
 interface LiveScreenProps {
   health: HealthStatus | null;
@@ -112,6 +111,7 @@ export function LiveScreen({
   }, [snapshot, selectedRoom]);
 
   const isAllRooms = selectedRoom === 'ALL' || !selectedRoom;
+  const [showMissingDetails, setShowMissingDetails] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -124,22 +124,40 @@ export function LiveScreen({
       />
 
       {missingSlots.length > 0 && !isAllRooms && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl px-3.5 py-3 flex items-start gap-2.5">
-          <CalendarX className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-          <div className="min-w-0">
-            <p className="text-xs font-bold text-red-900">
-              {missingSlots.length} lecture{missingSlots.length > 1 ? 's' : ''} missing today (Room {selectedRoom})
-            </p>
-            <ul className="text-[11px] text-red-700 leading-relaxed mt-1 space-y-0.5">
-              {missingSlots.slice(0, 4).map((m) => (
-                <li key={m.slotId || m.timetableEntryId} className="truncate">
-                  {m.slotStartTime.slice(0, 5)}–{m.slotEndTime.slice(0, 5)} · {m.batchId} / {m.subjectId}
-                  {m.teacherId ? ` · ${m.teacherId}` : ''}
-                </li>
-              ))}
-              {missingSlots.length > 4 && <li>...and {missingSlots.length - 4} more</li>}
-            </ul>
+        <div className="bg-rose-50/90 border border-rose-200 rounded-2xl p-4 shadow-xs">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <CalendarX className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-bold text-rose-950 truncate">
+                  {missingSlots.length} lecture{missingSlots.length > 1 ? 's' : ''} missing today (Room {selectedRoom})
+                </p>
+                <p className="text-[11px] text-rose-700 truncate">
+                  Recordings not detected yet for scheduled timetable slots
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowMissingDetails((prev) => !prev)}
+              className="px-3 py-1.5 rounded-xl bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-semibold shrink-0 shadow-2xs transition active:scale-95"
+            >
+              {showMissingDetails ? 'Hide details' : `Show all (${missingSlots.length})`}
+            </button>
           </div>
+
+          {showMissingDetails && (
+            <div className="mt-3 pt-3 border-t border-rose-200/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 animate-in fade-in duration-200">
+              {missingSlots.map((m) => (
+                <div key={m.slotId || m.timetableEntryId} className="bg-white/90 border border-rose-100 rounded-xl p-2.5 text-xs text-rose-900 shadow-2xs">
+                  <span className="font-mono font-bold text-rose-950 block">{m.slotStartTime.slice(0, 5)}–{m.slotEndTime.slice(0, 5)}</span>
+                  <span className="truncate block text-[11px] font-semibold text-rose-800">{m.batchId} · {m.subjectId}</span>
+                  {m.teacherId && <span className="text-[10px] text-rose-600 block truncate">Teacher: {m.teacherId}</span>}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -155,11 +173,11 @@ export function LiveScreen({
       )}
 
       {/* 4 Quick Metrics Cards (24h Window) */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
         {/* Uploaded Today Card */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-medium">Uploaded Today (24h)</span>
+            <span className="text-xs font-medium">Uploaded (24h)</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="mt-2 flex items-baseline gap-2">
@@ -169,7 +187,7 @@ export function LiveScreen({
         </div>
 
         {/* Drive Queue Card */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-500">
             <span className="text-xs font-medium">Drive Queue</span>
             <CloudUpload className="w-4 h-4 text-cyan-600" />
@@ -181,7 +199,7 @@ export function LiveScreen({
         </div>
 
         {/* Pending Reviews Card */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-500">
             <span className="text-xs font-medium">Pending Reviews</span>
             <AlertCircle className={`w-4 h-4 ${pendingReviewCount > 0 ? 'text-amber-500' : 'text-slate-400'}`} />
@@ -197,7 +215,7 @@ export function LiveScreen({
         </div>
 
         {/* Failed (24h) Card */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-500">
             <span className="text-xs font-medium">Failed (24h)</span>
             <RotateCcw className={`w-4 h-4 ${failedToday > 0 ? 'text-red-500' : 'text-slate-400'}`} />
@@ -215,67 +233,92 @@ export function LiveScreen({
         </div>
       </div>
 
-      {/* Room status card */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Room Status</span>
-            <span className="px-2 py-0.5 text-[11px] font-bold rounded-md bg-cyan-50 text-cyan-700 border border-cyan-200">
-              {isAllRooms ? 'All Rooms (Center View)' : `Room ${selectedRoom}`}
-            </span>
+      {/* Desktop 2-Column Grid: Left is Status & Diagnostics, Right is Live Feed */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column: Room Status & Diagnostics */}
+        <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-20">
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Room Status</span>
+                <span className="px-2 py-0.5 text-[11px] font-bold rounded-md bg-cyan-50 text-cyan-700 border border-cyan-200">
+                  {isAllRooms ? 'All Rooms (Center View)' : `Room ${selectedRoom}`}
+                </span>
+              </div>
+              <Pill tone={agentInfo?.fileWatcherEnabled && !controlState?.monitoringPaused ? 'emerald' : 'amber'}>
+                {agentInfo?.fileWatcherEnabled ? (controlState?.monitoringPaused ? 'Watcher Paused' : 'Watcher Active') : 'Watcher Off'}
+              </Pill>
+            </div>
+
+            <div className="space-y-2.5 text-xs">
+              {!isAllRooms ? (
+                <>
+                  <div className="flex justify-between py-1.5 border-b border-slate-100">
+                    <span className="text-slate-500">Current Slot</span>
+                    {slot ? (
+                      <span className="font-semibold text-slate-900">
+                        {slot.batchId} · {slot.subjectId}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400">No slot scheduled now</span>
+                    )}
+                  </div>
+                  <div className="flex justify-between py-1.5 border-b border-slate-100">
+                    <span className="text-slate-500">Monitored Folder</span>
+                    <span className="font-mono text-slate-800 truncate max-w-[200px]" title={agentInfo?.monitorFolder}>
+                      {agentInfo?.monitorFolder || '...'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1.5 border-b border-slate-100">
+                    <span className="text-slate-500">Agent Uptime</span>
+                    <span className="font-semibold text-slate-800">
+                      {agentInfo ? formatUptime(agentInfo.uptimeSeconds) : '...'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1.5 border-b border-slate-100">
+                    <span className="text-slate-500">Database</span>
+                    <span className="font-semibold text-emerald-700 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      {health?.database ?? 'Connected (SQLite WAL)'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1.5">
+                    <span className="text-slate-500">Google Drive</span>
+                    <span className="font-semibold text-cyan-700 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
+                      {agentInfo?.googleDriveEnabled ? 'Live Connected' : 'Mock Mode'}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between py-1.5 border-b border-slate-100">
+                    <span className="text-slate-500">Scope</span>
+                    <span className="font-semibold text-slate-900">All Classroom PCs across Center</span>
+                  </div>
+                  <div className="flex justify-between py-1.5 border-b border-slate-100">
+                    <span className="text-slate-500">Active Classroom PCs</span>
+                    <span className="font-semibold text-slate-800">{rooms.length} Rooms</span>
+                  </div>
+                  <div className="flex justify-between py-1.5 border-b border-slate-100">
+                    <span className="text-slate-500">Local PC Room</span>
+                    <span className="font-semibold text-cyan-700">Room {agentInfo?.roomId || '603'}</span>
+                  </div>
+                  <div className="flex justify-between py-1.5">
+                    <span className="text-slate-500">Google Drive</span>
+                    <span className="font-semibold text-cyan-700 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
+                      {agentInfo?.googleDriveEnabled ? 'Live Connected' : 'Mock Mode'}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-          <Pill tone={agentInfo?.fileWatcherEnabled && !controlState?.monitoringPaused ? 'emerald' : 'amber'}>
-            {agentInfo?.fileWatcherEnabled ? (controlState?.monitoringPaused ? 'Watcher Paused' : 'Watcher Active') : 'Watcher Off'}
-          </Pill>
         </div>
 
-        <div className="space-y-2 text-xs">
-          {!isAllRooms ? (
-            <>
-              <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-500">Current Slot</span>
-                {slot ? (
-                  <span className="font-semibold text-slate-900">
-                    {slot.batchId} · {slot.subjectId}
-                  </span>
-                ) : (
-                  <span className="text-slate-400">No slot scheduled now</span>
-                )}
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-500">Monitored Folder</span>
-                <span className="font-mono text-slate-800 truncate max-w-[200px]" title={agentInfo?.monitorFolder}>
-                  {agentInfo?.monitorFolder || '...'}
-                </span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="text-slate-500">Agent Uptime</span>
-                <span className="font-semibold text-slate-800">
-                  {agentInfo ? formatUptime(agentInfo.uptimeSeconds) : '...'}
-                </span>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-500">Scope</span>
-                <span className="font-semibold text-slate-900">All Classroom PCs across Center</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-500">Active Classroom PCs</span>
-                <span className="font-semibold text-slate-800">{rooms.length} Rooms</span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="text-slate-500">Local PC Room</span>
-                <span className="font-semibold text-cyan-700">Room {agentInfo?.roomId || '603'}</span>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Live Upload Feed (Strictly Last 24 Hours) */}
-      <div className="space-y-2">
+        {/* Right Column: Live Upload Feed */}
+        <div className="lg:col-span-7 space-y-3">
         <div className="flex items-center justify-between px-1">
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
@@ -306,17 +349,24 @@ export function LiveScreen({
         </div>
 
         {feedItems.length === 0 ? (
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-6 text-center text-slate-500 text-xs shadow-sm space-y-1.5">
-            <p className="font-medium text-slate-700">
-              No uploads in the last 24 hours {isAllRooms ? 'for any room' : `for Room ${selectedRoom}`}.
-            </p>
-            <p className="text-[11px] text-slate-400">
-              Drop a new recording or PDF into{' '}
-              <code className="text-cyan-700 font-mono bg-cyan-50 px-1 py-0.5 rounded border border-cyan-200">
-                {agentInfo?.monitorFolder || 'the monitored folder'}
-              </code>{' '}
-              to start a transfer!
-            </p>
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-8 text-center text-slate-500 text-xs shadow-xs space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-cyan-50 border border-cyan-100 flex items-center justify-center text-cyan-600 mx-auto shadow-2xs">
+              <CloudUpload className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <p className="font-bold text-slate-900 text-sm">
+                Upload Queue is Clear
+              </p>
+              <p className="text-[11px] text-slate-500 max-w-md mx-auto leading-relaxed">
+                No transfers in flight or completed in the last 24 hours {isAllRooms ? 'across the center' : `for Room ${selectedRoom}`}. When new classroom recordings or notes are detected, they stream here in real-time.
+              </p>
+            </div>
+            <div className="pt-1 flex items-center justify-center">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono bg-slate-50 border border-slate-200 text-slate-600">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Monitoring: <strong className="text-slate-800 truncate max-w-[240px]">{agentInfo?.monitorFolder || 'Classroom recording folder'}</strong>
+              </span>
+            </div>
           </div>
         ) : (
           <div className="space-y-2">
@@ -427,21 +477,8 @@ export function LiveScreen({
             })}
           </div>
         )}
+        </div>
       </div>
-
-      {agentInfo && (
-        <Card className="text-[11px] text-slate-500 flex items-center gap-2">
-          <MonitorX className={`w-3.5 h-3.5 shrink-0 ${health?.database === 'Connected' ? 'text-emerald-600' : 'text-red-500'}`} />
-          <span>
-            DB: <strong className="text-slate-700">{health?.database ?? '...'}</strong>
-          </span>
-          <span className="text-slate-300">·</span>
-          <Folder className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
-          <span>
-            Drive: <strong className="text-slate-700">{agentInfo.googleDriveEnabled ? 'Live' : 'Mock mode'}</strong>
-          </span>
-        </Card>
-      )}
     </div>
   );
 }

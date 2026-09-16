@@ -179,11 +179,11 @@ export function StudioLiveScreen() {
         <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold">
           <Filter className="w-3.5 h-3.5" /> Filters
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <select
             value={selectedCenter}
             onChange={(e) => { setSelectedCenter(e.target.value); setSelectedRoom(''); }}
-            className="text-xs rounded-lg border border-slate-200 px-2 py-1.5 bg-slate-50 focus:ring-1 focus:ring-cyan-400"
+            className="text-xs rounded-xl border border-slate-200 px-2.5 py-2 bg-slate-50 focus:ring-2 focus:ring-cyan-500/30 text-slate-800"
           >
             <option value="">All Centers</option>
             {centers.map((c) => (
@@ -193,7 +193,7 @@ export function StudioLiveScreen() {
           <select
             value={selectedRoom}
             onChange={(e) => setSelectedRoom(e.target.value)}
-            className="text-xs rounded-lg border border-slate-200 px-2 py-1.5 bg-slate-50 focus:ring-1 focus:ring-cyan-400"
+            className="text-xs rounded-xl border border-slate-200 px-2.5 py-2 bg-slate-50 focus:ring-2 focus:ring-cyan-500/30 text-slate-800"
           >
             <option value="">All Rooms</option>
             {availableRooms.map((r) => (
@@ -203,7 +203,7 @@ export function StudioLiveScreen() {
           <select
             value={selectedFileType}
             onChange={(e) => setSelectedFileType(e.target.value)}
-            className="text-xs rounded-lg border border-slate-200 px-2 py-1.5 bg-slate-50 focus:ring-1 focus:ring-cyan-400"
+            className="text-xs rounded-xl border border-slate-200 px-2.5 py-2 bg-slate-50 focus:ring-2 focus:ring-cyan-500/30 text-slate-800"
           >
             <option value="">All Types</option>
             <option value="video">Video</option>
@@ -214,7 +214,7 @@ export function StudioLiveScreen() {
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="text-xs rounded-lg border border-slate-200 px-2 py-1.5 bg-slate-50 focus:ring-1 focus:ring-cyan-400"
+            className="text-xs rounded-xl border border-slate-200 px-2.5 py-2 bg-slate-50 focus:ring-2 focus:ring-cyan-500/30 text-slate-800"
           />
         </div>
       </div>
@@ -255,7 +255,7 @@ export function StudioLiveScreen() {
           No files found for the selected filters.
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {files.map((file) => (
             <div
               key={file._id}
