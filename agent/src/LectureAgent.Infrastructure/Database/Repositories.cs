@@ -127,11 +127,15 @@ public class UploadQueueRepository : GenericRepository<UploadQueueEntry>, IUploa
 
     public async Task<List<UploadQueueEntry>> GetPendingUploadsAsync(int limit)
     {
+        // Only pick up entries that are Pending, Failed, or Uploading entries that have
+        // been stuck for >1 hour (stale — the original uploader likely crashed).
+        // This prevents two threads from uploading the same file simultaneously.
+        var staleThreshold = DateTime.UtcNow.AddHours(-1);
         return await _dbSet
             .AsNoTracking()
             .Where(e => e.Status == UploadStatus.Pending
-                || e.Status == UploadStatus.Uploading
-                || e.Status == UploadStatus.Failed)
+                || e.Status == UploadStatus.Failed
+                || (e.Status == UploadStatus.Uploading && e.UpdatedAt < staleThreshold))
             .OrderBy(e => e.CreatedAt)
             .Take(limit)
             .ToListAsync();

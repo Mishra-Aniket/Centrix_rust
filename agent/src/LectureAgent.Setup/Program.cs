@@ -36,12 +36,12 @@ internal static class Program
         if (!noUi)
         {
             ApplicationConfiguration.Initialize();
-            Application.Run(new InstallForm(root, noLaunch));
+            Application.Run(new InstallForm(root, !noLaunch));
             return;
         }
 #endif
 
-        var error = ExtractAndLaunch(root, noLaunch);
+        var error = ExtractAndLaunch(root, !noLaunch);
         if (error != null)
         {
             Console.Error.WriteLine(error);
@@ -126,7 +126,7 @@ internal sealed class InstallForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MinimizeBox = false;
         MaximizeBox = false;
-        ShowInTaskbar = false;
+        ShowInTaskbar = true;
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(420, 90);
         Text = "Centrix Setup";

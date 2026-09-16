@@ -22,6 +22,9 @@ public class FileMonitoringService : BackgroundService
     private readonly string _roomId;
     private readonly string _deviceId;
     private readonly bool _queueUnmatchedFiles;
+    // Debounce: track files currently being processed to prevent duplicate sessions
+    // from rapid OS watcher events (Created + Changed + Changed for same file).
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _processingFiles = new(StringComparer.OrdinalIgnoreCase);
 
     public FileMonitoringService(
         IFileWatcher fileWatcher,
@@ -132,6 +135,14 @@ public class FileMonitoringService : BackgroundService
 
     private async Task ProcessFileAsync(FileDetectedEventArgs e)
     {
+        // Debounce: prevent concurrent processing of the same file path.
+        // OS file watchers often fire Created+Changed+Changed rapidly for one file.
+        if (!_processingFiles.TryAdd(e.FilePath, 0))
+        {
+            _logger.LogInformation("File already being processed, skipping duplicate event: {Path}", e.FilePath);
+            return;
+        }
+
         try
         {
             _logger.LogInformation($"Processing detected file: {e.FilePath}");
@@ -150,12 +161,23 @@ public class FileMonitoringService : BackgroundService
                 return;
             }
 
-            // Wait for file to be stable
-            var isStable = await fileValidator.IsFileStableAsync(e.FilePath);
-            if (!isStable)
+            // Wait for file to be stable (retry for up to 60 seconds for recordings still being written)
+            const int maxStabilityRetries = 12;
+            const int stabilityDelayMs = 5000;
+            var isStable = false;
+            for (int attempt = 1; attempt <= maxStabilityRetries; attempt++)
             {
-                _logger.LogWarning($"File not stable, skipping: {e.FilePath}");
-                return;
+                isStable = await fileValidator.IsFileStableAsync(e.FilePath);
+                if (isStable) break;
+                if (attempt == maxStabilityRetries)
+                {
+                    _logger.LogWarning("File not stable after {Attempts} attempts ({TotalSec}s), skipping: {Path}",
+                        maxStabilityRetries, maxStabilityRetries * stabilityDelayMs / 1000, e.FilePath);
+                    return;
+                }
+                _logger.LogInformation("File not yet stable (attempt {Attempt}/{Max}), waiting {Delay}ms: {Path}",
+                    attempt, maxStabilityRetries, stabilityDelayMs, e.FilePath);
+                await Task.Delay(stabilityDelayMs);
             }
 
             // Skip files that were already detected on a previous run or rescan,
@@ -283,6 +305,10 @@ public class FileMonitoringService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError($"Error processing file: {ex.Message}");
+        }
+        finally
+        {
+            _processingFiles.TryRemove(e.FilePath, out _);
         }
     }
 }

@@ -32,7 +32,8 @@ public class LectureSessionService
     }
 
     /// <summary>
-    /// Creates a new lecture session from detected file.
+    /// Creates a new lecture session from detected file, or attaches the file to an
+    /// existing session when a recording and notes PDF arrive for the same time slot.
     /// </summary>
     public async Task<LectureSession> CreateSessionAsync(
         string organizationId,
@@ -46,6 +47,40 @@ public class LectureSessionService
     {
         _logger.LogInformation($"Creating lecture session for {videoFilePath}");
 
+        // Determine file type from extension
+        var ext = Path.GetExtension(videoFilePath).ToLowerInvariant();
+        var isDocument = ext is ".pdf" or ".pptx" or ".ppt";
+
+        // Try to find an existing session in the same room within a ±15 min window.
+        // This allows a video and its matching PDF to be linked to one session.
+        var existingSession = await TryFindExistingSessionAsync(centerId, roomId, detectedStart, detectedEnd);
+        if (existingSession != null)
+        {
+            if (isDocument && string.IsNullOrEmpty(existingSession.PdfFileLocalPath))
+            {
+                existingSession.PdfFileLocalPath = videoFilePath;
+                existingSession.PdfFileSizeBytes = videoFileSize;
+                existingSession.UpdatedAt = DateTime.UtcNow;
+                await _lectureRepository.UpdateAsync(existingSession);
+                await _lectureRepository.SaveChangesAsync();
+                _logger.LogInformation("Attached PDF/document to existing session {SessionId}: {Path}",
+                    existingSession.LectureSessionId, videoFilePath);
+                return existingSession;
+            }
+            else if (!isDocument && string.IsNullOrEmpty(existingSession.VideoFileLocalPath))
+            {
+                existingSession.VideoFileLocalPath = videoFilePath;
+                existingSession.VideoFileSizeBytes = videoFileSize;
+                existingSession.UpdatedAt = DateTime.UtcNow;
+                await _lectureRepository.UpdateAsync(existingSession);
+                await _lectureRepository.SaveChangesAsync();
+                _logger.LogInformation("Attached video to existing session {SessionId}: {Path}",
+                    existingSession.LectureSessionId, videoFilePath);
+                return existingSession;
+            }
+            // If both slots are filled, fall through to create a new session
+        }
+
         var lectureId = $"LSN-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..8].ToUpper()}";
         
         var session = new LectureSession
@@ -55,8 +90,6 @@ public class LectureSessionService
             CenterId = centerId,
             RoomId = roomId,
             DeviceId = deviceId,
-            VideoFileLocalPath = videoFilePath,
-            VideoFileSizeBytes = videoFileSize,
             DetectedStartTime = detectedStart,
             DetectedEndTime = detectedEnd,
             DetectedDurationSeconds = (int)(detectedEnd - detectedStart).TotalSeconds,
@@ -64,6 +97,18 @@ public class LectureSessionService
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
+
+        // Populate the correct file path field based on type
+        if (isDocument)
+        {
+            session.PdfFileLocalPath = videoFilePath;
+            session.PdfFileSizeBytes = videoFileSize;
+        }
+        else
+        {
+            session.VideoFileLocalPath = videoFilePath;
+            session.VideoFileSizeBytes = videoFileSize;
+        }
 
         // Calculate hash
         try
@@ -82,6 +127,23 @@ public class LectureSessionService
             "Lecture session created from file detection");
 
         return session;
+    }
+
+    /// <summary>
+    /// Finds an existing session in the same room that overlaps the detected time window.
+    /// Used to pair video recordings with their matching PDF/notes files.
+    /// </summary>
+    private async Task<LectureSession?> TryFindExistingSessionAsync(
+        string centerId, string roomId, DateTime detectedStart, DateTime detectedEnd)
+    {
+        const int toleranceMinutes = 15;
+        var sessions = await _lectureRepository.GetByCenterAndDateAsync(centerId, detectedStart.Date);
+        return sessions.FirstOrDefault(s =>
+            s.RoomId == roomId
+            && s.Status != LectureStatus.Cancelled
+            && s.Status != LectureStatus.Rejected
+            && s.DetectedStartTime < detectedEnd.AddMinutes(toleranceMinutes)
+            && s.DetectedEndTime > detectedStart.AddMinutes(-toleranceMinutes));
     }
 
     /// <summary>

@@ -26,7 +26,9 @@ public sealed class ApiKeyMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        if (!_configuration.GetValue("Auth:Enabled", false))
+        // Default to true: auth is enabled unless explicitly disabled in config.
+        // Previously defaulted to false, leaving the entire API open on the LAN.
+        if (!_configuration.GetValue("Auth:Enabled", true))
         {
             context.Items[AuthModeItem] = "key";
             await _next(context);

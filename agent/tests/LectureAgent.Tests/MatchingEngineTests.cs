@@ -162,8 +162,10 @@ public class MatchingEngineTests : IDisposable
             LectureSessionId = "LSN-TEST-2",
             CenterId = "C-1",
             RoomId = "R-1",
-            DetectedStartTime = date.AddHours(10).AddMinutes(2),
-            DetectedEndTime = date.AddHours(11).AddMinutes(28),
+            // Timestamps are in UTC; matching engine converts to IST (+5:30).
+            // IST 10:02 = UTC 04:32, IST 11:28 = UTC 05:58
+            DetectedStartTime = date.AddHours(4).AddMinutes(32),
+            DetectedEndTime = date.AddHours(5).AddMinutes(58),
             DetectedDurationSeconds = 86 * 60,
             VideoFileLocalPath = "/recordings/batch-a_mathematics.mp4"
         };

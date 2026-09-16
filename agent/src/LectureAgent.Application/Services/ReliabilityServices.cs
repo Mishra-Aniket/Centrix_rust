@@ -109,6 +109,11 @@ public static class DuplicateSlotChecker
         return lectures.Any(lecture =>
             lecture.LectureSessionId != excludeLectureSessionId
             && string.Equals(lecture.BatchId, slot.BatchId, StringComparison.OrdinalIgnoreCase)
+            // Also match the specific slot/subject to avoid false positives on
+            // back-to-back classes for the same batch (e.g., Math 10-11, Physics 11-12).
+            && (string.IsNullOrEmpty(lecture.ScheduledSlotId)
+                || string.Equals(lecture.ScheduledSlotId, slot.SlotId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(lecture.SubjectId, slot.SubjectId, StringComparison.OrdinalIgnoreCase))
             && AcceptedStatuses.Contains(lecture.Status)
             && lecture.DetectedStartTime < slotEnd.AddMinutes(overlapToleranceMinutes)
             && lecture.DetectedEndTime > slotStart.AddMinutes(-overlapToleranceMinutes));

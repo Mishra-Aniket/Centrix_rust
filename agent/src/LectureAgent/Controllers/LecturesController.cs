@@ -24,6 +24,7 @@ public class LecturesController : ControllerBase
     private readonly ILectureRepository _repository;
     private readonly IConfiguration _configuration;
     private readonly IFileWatcher _fileWatcher;
+    private readonly IAuditLogger _auditLogger;
     private readonly ILogger<LecturesController> _logger;
 
     public LecturesController(
@@ -33,6 +34,7 @@ public class LecturesController : ControllerBase
         ILectureRepository repository,
         IConfiguration configuration,
         IFileWatcher fileWatcher,
+        IAuditLogger auditLogger,
         ILogger<LecturesController> logger)
     {
         _lectureService = lectureService;
@@ -41,6 +43,7 @@ public class LecturesController : ControllerBase
         _repository = repository;
         _configuration = configuration;
         _fileWatcher = fileWatcher;
+        _auditLogger = auditLogger;
         _logger = logger;
     }
 
@@ -318,6 +321,7 @@ public class LecturesController : ControllerBase
         session.UpdatedAt = DateTime.UtcNow;
         session.LastStatusChange = DateTime.UtcNow;
         await _repository.UpdateAsync(session);
+        await _repository.SaveChangesAsync();
 
         // Cancel any pending queue entries
         var queueEntries = await _queueService.GetByLectureSessionIdAsync(lectureSessionId);
@@ -330,6 +334,11 @@ public class LecturesController : ControllerBase
         }
 
         _logger.LogInformation("Lecture {LectureSessionId} cancelled and rejected", lectureSessionId);
+
+        await _auditLogger.LogAsync("LECTURE_SESSION", lectureSessionId, "CANCELLED", null,
+            null, new { session.Status, session.ReviewStatus },
+            "Lecture manually cancelled by dashboard user");
+
         return Ok(MapToDto(session));
     }
 
@@ -393,6 +402,11 @@ public class LecturesController : ControllerBase
             lectureSessionId,
             LectureStatus.Confirmed,
             "Reviewer chose to upload despite the duplicate flag");
+
+        await _auditLogger.LogAsync("LECTURE_SESSION", lectureSessionId, "FORCE_ENQUEUED", null,
+            new { OriginalStatus = LectureStatus.Duplicate },
+            new { updated.Status, QueueEntryId = queueEntry.QueueEntryId },
+            "Duplicate lecture force-enqueued for upload by dashboard user");
 
         return Ok(MapToDto(updated));
     }

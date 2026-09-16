@@ -20,11 +20,16 @@ using System.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Logging
+// Logging — use an absolute path so the Windows service doesn't write to System32
+var logDir = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+    "LectureAgentApp", "logs");
+Directory.CreateDirectory(logDir);
+
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .WriteTo.Console()
-    .WriteTo.File("logs/agent-.txt", rollingInterval: RollingInterval.Day)
+    .WriteTo.File(Path.Combine(logDir, "agent-.txt"), rollingInterval: RollingInterval.Day)
     .CreateLogger();
 
 builder.Host.UseSerilog();

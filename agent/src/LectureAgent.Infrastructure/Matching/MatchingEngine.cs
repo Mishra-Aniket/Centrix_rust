@@ -46,8 +46,12 @@ public class MatchingEngine : IMatchingEngine
             ScoringDetails = new MatchingScoringDetails()
         };
 
-        // Get timetable for the room and date (using classroom date)
-        var date = lecture.DetectedStartTime.Date;
+        // Get timetable for the room and date. Slot times are local (IST), so convert
+        // the detected start from UTC to IST before extracting .Date. Without this,
+        // lectures at 1 AM IST (= 7:30 PM UTC previous day) query the wrong day.
+        var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+        var localStart = TimeZoneInfo.ConvertTimeFromUtc(lecture.DetectedStartTime, istZone);
+        var date = localStart.Date;
         var timetableSlots = await _timetableProvider.GetTimetableAsync(
             lecture.CenterId, lecture.RoomId, date);
 
@@ -155,7 +159,7 @@ public class MatchingEngine : IMatchingEngine
             details.HistoricalFactor = new ScoreFactor { Score = historicalScore, Weight = 0.05, Contribution = historicalScore * 0.05 };
             details.ContextFactor = new ScoreFactor { Score = contextScore, Weight = 0.05, Contribution = contextScore * 0.05 };
 
-            var totalScore = (int)(details.RoomFactor.Contribution +
+            var totalScore = (int)Math.Round(details.RoomFactor.Contribution +
                                    details.TimeOverlapFactor.Contribution +
                                    details.DurationFactor.Contribution +
                                    details.BatchSubjectFactor.Contribution +
@@ -224,8 +228,11 @@ public class MatchingEngine : IMatchingEngine
 
     private static int CalculateContextScore(LectureSession lecture, TimetableEntry slot)
     {
-        var slotStart = lecture.DetectedStartTime.Date + slot.SlotStartTime;
-        var diffMinutes = Math.Abs((lecture.DetectedStartTime - slotStart).TotalMinutes);
+        // Use IST date for slot timestamp construction (consistent with AnalyzeAsync)
+        var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+        var localStart = TimeZoneInfo.ConvertTimeFromUtc(lecture.DetectedStartTime, istZone);
+        var slotStart = localStart.Date + slot.SlotStartTime;
+        var diffMinutes = Math.Abs((localStart - slotStart).TotalMinutes);
         if (diffMinutes <= 15) return 100;
         if (diffMinutes <= 30) return 80;
         return 50;
@@ -233,11 +240,15 @@ public class MatchingEngine : IMatchingEngine
 
     private int CalculateTimeOverlapScore(LectureSession lecture, TimetableEntry slot)
     {
-        var slotStart = lecture.DetectedStartTime.Date + slot.SlotStartTime;
-        var slotEnd = lecture.DetectedStartTime.Date + slot.SlotEndTime;
+        // Use IST date for slot timestamp construction (consistent with AnalyzeAsync)
+        var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+        var localStart = TimeZoneInfo.ConvertTimeFromUtc(lecture.DetectedStartTime, istZone);
+        var localEnd = TimeZoneInfo.ConvertTimeFromUtc(lecture.DetectedEndTime, istZone);
+        var slotStart = localStart.Date + slot.SlotStartTime;
+        var slotEnd = localStart.Date + slot.SlotEndTime;
 
-        var overlapStart = new[] { lecture.DetectedStartTime, slotStart }.Max();
-        var overlapEnd = new[] { lecture.DetectedEndTime, slotEnd }.Min();
+        var overlapStart = new[] { localStart, slotStart }.Max();
+        var overlapEnd = new[] { localEnd, slotEnd }.Min();
 
         if (overlapEnd <= overlapStart)
             return 0; // No overlap
