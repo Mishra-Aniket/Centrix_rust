@@ -114,6 +114,8 @@ export function ReviewScreen({
   const [qcLoadingId, setQcLoadingId] = useState<string | null>(null);
   const [previewLecture, setPreviewLecture] = useState<LectureSession | null>(null);
   const [previewUploadFile, setPreviewUploadFile] = useState<File | null>(null);
+  const [manualYouTubeLecture, setManualYouTubeLecture] = useState<LectureSession | null>(null);
+  const [copiedInfo, setCopiedInfo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleOpenUpload = (presetLecture?: LectureSession) => {
@@ -292,9 +294,42 @@ export function ReviewScreen({
     );
   };
 
-  const renderYouTubePanel = (_lecture: LectureSession) => {
-    // Disabled for now per user request
-    return null;
+  const renderYouTubePanel = (lecture: LectureSession) => {
+    return (
+      <div className="border border-[var(--rule)] bg-[var(--cream)] p-3 space-y-2 text-xs font-mono">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-red-600 shrink-0" />
+            <span className="text-[11px] font-semibold text-[var(--ink)] truncate">
+              YouTube Publishing (Manual)
+            </span>
+          </div>
+          <span className="text-[9px] px-1.5 py-0.2 border border-emerald-300 bg-emerald-50 text-emerald-800 uppercase">
+            Drive Ready
+          </span>
+        </div>
+        <p className="text-[10px] text-[var(--stone)] leading-relaxed">
+          Lecture safely uploaded to Google Drive. Center members can publish to YouTube manually anytime.
+        </p>
+        <div className="flex items-center gap-2 pt-0.5">
+          <button
+            type="button"
+            onClick={() => setManualYouTubeLecture(lecture)}
+            className="px-2.5 py-1 text-[10px] uppercase tracking-wider bg-[var(--ink)] text-[var(--cream)] hover:opacity-90 transition cursor-pointer flex items-center gap-1"
+          >
+            <span>Publish to YouTube</span>
+          </button>
+          <a
+            href="https://studio.youtube.com"
+            target="_blank"
+            rel="noreferrer"
+            className="px-2.5 py-1 text-[10px] uppercase tracking-wider border border-[var(--rule)] bg-[var(--paper)] text-[var(--ink)] hover:bg-[var(--cream)] transition flex items-center gap-1"
+          >
+            <span>Open Studio ↗</span>
+          </a>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -335,26 +370,37 @@ export function ReviewScreen({
       </div>
 
       {/* Pipeline Summary matching 6-stat box bar */}
-      {summary && summary.total > 0 && (
-        <div className="grid grid-cols-3 sm:grid-cols-6 border border-[var(--rule)] bg-[var(--paper)]">
-          {[
-            { label: 'Total', value: summary.total },
-            { label: 'Uploaded', value: summary.uploaded, pct: summary.uploadedPercentage },
-            { label: 'Matched', value: summary.matched, pct: summary.matchedPercentage },
-            { label: 'Unmatched', value: summary.unmatched },
-            { label: 'Failed', value: summary.failedUpload },
-            { label: 'Pending', value: summary.pendingReview },
-          ].map((card, idx) => {
-            return (
-              <div key={card.label} className={`p-3 text-center flex flex-col justify-center ${idx > 0 ? 'border-l border-[var(--rule)]' : ''}`}>
-                <span className="font-serif text-2xl font-light text-[var(--ink)] leading-none">{card.value}</span>
-                <span className="font-mono text-[9px] uppercase tracking-wider text-[var(--stone)] mt-1.5">{card.label}</span>
-                {card.pct !== undefined && <span className="font-mono text-[9px] text-[var(--stone)] mt-0.5">{card.pct}%</span>}
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {(() => {
+        const total = (summary && summary.total > 0) ? summary.total : (pendingReviews.length + completedLectures.length + failedQueueItems.length);
+        const uploaded = (summary && summary.total > 0) ? summary.uploaded : completedLectures.length;
+        const matched = (summary && summary.total > 0) ? summary.matched : (completedLectures.length + awaitingUpload.length);
+        const unmatched = (summary && summary.total > 0) ? summary.unmatched : needsReview.filter(p => !p.batchId || p.batchId === 'Unassigned').length;
+        const failed = (summary && summary.total > 0) ? summary.failedUpload : failedQueueItems.length;
+        const pending = (summary && summary.total > 0) ? summary.pendingReview : needsReview.length;
+        const uploadedPct = total > 0 ? Math.round((uploaded / total) * 100) : 0;
+        const matchedPct = total > 0 ? Math.round((matched / total) * 100) : 0;
+
+        return (
+          <div className="grid grid-cols-3 sm:grid-cols-6 border border-[var(--rule)] bg-[var(--paper)]">
+            {[
+              { label: 'Total', value: total },
+              { label: 'Uploaded', value: uploaded, pct: uploadedPct },
+              { label: 'Matched', value: matched, pct: matchedPct },
+              { label: 'Unmatched', value: unmatched },
+              { label: 'Failed', value: failed },
+              { label: 'Pending', value: pending },
+            ].map((card, idx) => {
+              return (
+                <div key={card.label} className={`p-3 text-center flex flex-col justify-center ${idx > 0 ? 'border-l border-[var(--rule)]' : ''}`}>
+                  <span className="font-serif text-2xl font-light text-[var(--ink)] leading-none">{card.value}</span>
+                  <span className="font-mono text-[9px] uppercase tracking-wider text-[var(--stone)] mt-1.5">{card.label}</span>
+                  {card.pct !== undefined && <span className="font-mono text-[9px] text-[var(--stone)] mt-0.5">{card.pct}%</span>}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* 1. URGENT: Failed Uploads Needing Folder / Batch Selection */}
       {failedQueueItems.length > 0 && (
@@ -1112,6 +1158,75 @@ export function ReviewScreen({
         file={previewUploadFile}
         onPublishToYouTube={onPublishToYouTube}
       />
+
+      {/* Manual YouTube Publishing Helper Dialog */}
+      {manualYouTubeLecture && (
+        <Modal
+          open={!!manualYouTubeLecture}
+          title="Publish Lecture to YouTube (Manual)"
+          icon={<Video className="w-4 h-4 text-red-600" />}
+          maxWidth="max-w-lg"
+          onClose={() => setManualYouTubeLecture(null)}
+        >
+          <div className="space-y-4 font-mono text-xs">
+            <div className="p-3 border border-emerald-300 bg-emerald-50 text-emerald-900 text-xs leading-relaxed space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <span>✓</span>
+                <span>Verified in Google Drive</span>
+              </div>
+              <p className="text-[11px] text-emerald-800">
+                This lecture is safely archived in Google Drive. Center members can publish it to YouTube Studio using the pre-formatted title and details below.
+              </p>
+            </div>
+
+            <div className="space-y-3 bg-[var(--cream)] p-3 border border-[var(--rule)]">
+              <div>
+                <span className="text-[10px] uppercase tracking-wider text-[var(--stone)] block mb-0.5">Title:</span>
+                <span className="font-bold text-[var(--ink)] text-xs select-all">
+                  {`[${manualYouTubeLecture.batchId || 'Batch'}] ${manualYouTubeLecture.subjectId || 'Lecture'} - Room ${manualYouTubeLecture.roomId} (${new Date(manualYouTubeLecture.detectedStartTime).toLocaleDateString()})`}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <span className="text-[10px] uppercase tracking-wider text-[var(--stone)] block">Batch / Room:</span>
+                  <span className="text-[var(--ink)] font-medium">{manualYouTubeLecture.batchId || 'Unassigned'} · Room {manualYouTubeLecture.roomId}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase tracking-wider text-[var(--stone)] block">Subject:</span>
+                  <span className="text-[var(--ink)] font-medium">{manualYouTubeLecture.subjectId || 'Standard'}</span>
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase tracking-wider text-[var(--stone)] block">Drive Location:</span>
+                <span className="text-[var(--ink)] text-[11px] truncate block">{manualYouTubeLecture.driveFolderPath || 'Root Classroom Folder'}</span>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
+              <a
+                href="https://studio.youtube.com"
+                target="_blank"
+                rel="noreferrer"
+                className="w-full sm:flex-1 py-2.5 px-3 bg-red-600 hover:bg-red-700 text-white font-bold text-center text-xs uppercase tracking-wider transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>Open YouTube Studio ↗</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  const title = `[${manualYouTubeLecture.batchId || 'Batch'}] ${manualYouTubeLecture.subjectId || 'Lecture'} - Room ${manualYouTubeLecture.roomId} (${new Date(manualYouTubeLecture.detectedStartTime).toLocaleDateString()})`;
+                  navigator.clipboard.writeText(title);
+                  setCopiedInfo(true);
+                  setTimeout(() => setCopiedInfo(false), 2000);
+                }}
+                className="w-full sm:w-auto py-2.5 px-4 border border-[var(--rule)] bg-[var(--paper)] hover:bg-[var(--cream)] text-[var(--ink)] text-xs uppercase tracking-wider transition cursor-pointer"
+              >
+                {copiedInfo ? '✓ Copied!' : 'Copy Title'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
     </div>
   );

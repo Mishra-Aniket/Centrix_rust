@@ -46,9 +46,17 @@ async function run() {
   await sharp(buf).resize(512, 512).png().toFile('/Users/aniketmishra/Desktop/Centrix/web/src/assets/logo.png');
   await sharp(buf).resize(512, 512).png().toFile('/Users/aniketmishra/Desktop/Centrix/agent/src/LectureAgent/wwwroot/logo.png');
   await sharp(buf).resize(512, 512).png().toFile('/Users/aniketmishra/LectureAgent/wwwroot/logo.png');
+  await sharp(buf).resize(512, 512).png().toFile('/Users/aniketmishra/Desktop/Centrix/agent/src/LectureAgent.Desktop/Assets/app.png');
   await sharp(buf).resize(128, 128).png().toFile('/Users/aniketmishra/Desktop/Centrix/web/public/favicon.png');
   await sharp(buf).resize(128, 128).png().toFile('/Users/aniketmishra/Desktop/Centrix/agent/src/LectureAgent/wwwroot/favicon.png');
-  console.log('Logo updated with exact matching geometry and smooth gradients!');
+
+  // Tauri icons
+  await sharp(buf).resize(512, 512).png().toFile('/Users/aniketmishra/Desktop/Centrix/web/src-tauri/icons/icon.png');
+  await sharp(buf).resize(256, 256).png().toFile('/Users/aniketmishra/Desktop/Centrix/web/src-tauri/icons/128x128@2x.png');
+  await sharp(buf).resize(128, 128).png().toFile('/Users/aniketmishra/Desktop/Centrix/web/src-tauri/icons/128x128.png');
+  await sharp(buf).resize(32, 32).png().toFile('/Users/aniketmishra/Desktop/Centrix/web/src-tauri/icons/32x32.png');
+
+  console.log('All Centrix logos and icons generated cleanly across web, agent, desktop, and tauri!');
 }
 
 run().catch(console.error);

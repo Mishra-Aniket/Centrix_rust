@@ -350,7 +350,7 @@ export function LoginScreen({ onConnected }: { onConnected: () => void }) {
 
           {/* Editorial Footer */}
           <div className="flex items-center gap-6 font-mono text-[11px] text-[var(--stone)] pt-12 border-t border-[var(--rule)]">
-            <span>PhysicsWallah Vidyapeeth</span>
+            <span>Centrix Operations</span>
             <span>·</span>
             <span>Centrix v2.4</span>
             <span>·</span>
