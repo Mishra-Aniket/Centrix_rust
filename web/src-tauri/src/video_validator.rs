@@ -4,6 +4,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileValidationReport {
     pub file_path: String,
     pub file_size_bytes: u64,

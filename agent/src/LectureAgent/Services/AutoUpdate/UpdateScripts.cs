@@ -13,7 +13,7 @@ public static class UpdateScripts
     public const string UnixScriptName = "apply-update.sh";
 
     public const string WindowsScript = """
-# LectureAgent auto-update helper. Runs detached; the agent that wrote this file exits
+# Centrix auto-update helper. Runs detached; the agent that wrote this file exits
 # immediately after spawning it. On any failure the previous install is restored.
 param(
     [Parameter(Mandatory=$true)][int]$ParentPid,
@@ -39,8 +39,8 @@ Write-Log "Backing up $InstallDir to $BackupDir"
 if (Test-Path $BackupDir) { Remove-Item -Recurse -Force $BackupDir }
 New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
 Copy-Item -Recurse -Force -Path (Join-Path $InstallDir '*') -Destination $BackupDir
-if (-not (Test-Path (Join-Path $BackupDir 'LectureAgent.dll'))) {
-    Write-Log 'Backup failed (LectureAgent.dll missing); aborting update without touching the install.'
+if (-not (Test-Path (Join-Path $BackupDir 'Centrix.dll')) -and -not (Test-Path (Join-Path $BackupDir 'LectureAgent.dll'))) {
+    Write-Log 'Backup failed (Centrix agent binary missing); aborting update without touching the install.'
     exit 1
 }
 
@@ -55,7 +55,8 @@ function Restart-Agent {
         $restarted = ($LASTEXITCODE -eq 0)
     }
     if (-not $restarted) {
-        $exe = Join-Path $InstallDir 'LectureAgent.exe'
+        $exe = Join-Path $InstallDir 'Centrix.exe'
+        if (-not (Test-Path $exe)) { $exe = Join-Path $InstallDir 'LectureAgent.exe' }
         if (Test-Path $exe) { Start-Process -FilePath $exe -WorkingDirectory $InstallDir -WindowStyle Hidden }
     }
 }
@@ -81,7 +82,7 @@ if ($healthy) {
 
 Write-Log 'New version never became healthy; ROLLING BACK.'
 if ($ServiceName) { Start-Process -FilePath 'sc.exe' -ArgumentList "stop $ServiceName" -WindowStyle Hidden -Wait; Start-Sleep -Seconds 5 }
-Get-Process | Where-Object { $_.Path -eq (Join-Path $InstallDir 'LectureAgent.exe') } | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process | Where-Object { $_.Path -eq (Join-Path $InstallDir 'Centrix.exe') -or $_.Path -eq (Join-Path $InstallDir 'LectureAgent.exe') } | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 
 Get-ChildItem -Path $InstallDir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
@@ -93,7 +94,7 @@ exit 2
 
     public const string UnixScript = """
 #!/bin/sh
-# LectureAgent auto-update helper (macOS/Linux). Runs detached; the agent exits right
+# Centrix auto-update helper (macOS/Linux). Runs detached; the agent exits right
 # after spawning it. Restores the previous install if the new build never gets healthy.
 PARENT_PID="$1"
 INSTALL_DIR="$2"
@@ -101,7 +102,7 @@ STAGING_DIR="$3"
 BACKUP_DIR="$4"
 HEALTH_URL="$5"
 LOG_FILE="${LA_LOG_FILE:-$BACKUP_DIR/update.log}"
-RESTART_CMD="${LA_RESTART_CMD:-cd \"$INSTALL_DIR\" && nohup ./LectureAgent >> \"$INSTALL_DIR/update-restart.log\" 2>&1 & echo $!}"
+RESTART_CMD="${LA_RESTART_CMD:-cd \"$INSTALL_DIR\" && nohup ./Centrix >> \"$INSTALL_DIR/update-restart.log\" 2>&1 & echo $!}"
 
 log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $1" >> "$LOG_FILE" 2>/dev/null; }
 
@@ -117,7 +118,7 @@ log "Backing up $INSTALL_DIR to $BACKUP_DIR"
 rm -rf "$BACKUP_DIR"
 mkdir -p "$BACKUP_DIR"
 cp -R "$INSTALL_DIR/." "$BACKUP_DIR/" || { log 'Backup failed; aborting.'; exit 1; }
-[ -f "$BACKUP_DIR/LectureAgent.dll" ] || { log 'Backup incomplete (LectureAgent.dll missing); aborting.'; exit 1; }
+[ -f "$BACKUP_DIR/Centrix.dll" ] || [ -f "$BACKUP_DIR/LectureAgent.dll" ] || { log 'Backup incomplete (Centrix agent binary missing); aborting.'; exit 1; }
 
 log 'Applying staged update'
 cp -R "$STAGING_DIR/." "$INSTALL_DIR/" || { log 'Copy failed; aborting.'; exit 1; }
@@ -141,7 +142,7 @@ while [ "$i" -lt 30 ]; do
 done
 
 log 'New version never became healthy; ROLLING BACK.'
-pkill -f "$INSTALL_DIR/LectureAgent" 2>/dev/null
+pkill -f "$INSTALL_DIR/Centrix" 2>/dev/null || pkill -f "$INSTALL_DIR/LectureAgent" 2>/dev/null
 sleep 3
 rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"

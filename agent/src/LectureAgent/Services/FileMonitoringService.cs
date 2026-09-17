@@ -27,6 +27,21 @@ public class FileMonitoringService : BackgroundService
     // from rapid OS watcher events (Created + Changed + Changed for same file).
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _processingFiles = new(StringComparer.OrdinalIgnoreCase);
 
+    // Persistent tracker for active OBS lecture recordings still being written to disk
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, ActiveRecordingState> _activeRecordings = new(StringComparer.OrdinalIgnoreCase);
+    private CancellationTokenSource? _watchdogCts;
+    private Task? _watchdogTask;
+
+    private sealed class ActiveRecordingState
+    {
+        public string FilePath { get; set; } = null!;
+        public string FileType { get; set; } = "VIDEO";
+        public DateTime FirstDetectedUtc { get; set; } = DateTime.UtcNow;
+        public DateTime LastSizeChangeUtc { get; set; } = DateTime.UtcNow;
+        public long LastSizeBytes { get; set; }
+        public DateTime LastLoggedUtc { get; set; } = DateTime.MinValue;
+    }
+
     public FileMonitoringService(
         IFileWatcher fileWatcher,
         IServiceScopeFactory scopeFactory,
@@ -57,16 +72,20 @@ public class FileMonitoringService : BackgroundService
     /// </summary>
     public static string ResolveMonitorFolder(string? rawFolder)
     {
-        if (string.IsNullOrWhiteSpace(rawFolder) ||
-            string.Equals(rawFolder, "Documents", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(rawFolder, "MyDocuments", StringComparison.OrdinalIgnoreCase))
+        // Paths pasted from Explorer or typed with surrounding quotes are common; the
+        // quotes are not part of the folder name.
+        var cleaned = rawFolder?.Trim().Trim('"', '\'').Trim();
+
+        if (string.IsNullOrWhiteSpace(cleaned) ||
+            string.Equals(cleaned, "Documents", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(cleaned, "MyDocuments", StringComparison.OrdinalIgnoreCase))
         {
             var docsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
             if (!string.IsNullOrWhiteSpace(docsPath))
                 return docsPath;
         }
 
-        var expanded = Environment.ExpandEnvironmentVariables(rawFolder ?? "Documents");
+        var expanded = Environment.ExpandEnvironmentVariables(cleaned ?? "Documents");
 
         if (string.Equals(expanded, "Documents", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(expanded, "MyDocuments", StringComparison.OrdinalIgnoreCase))
@@ -88,6 +107,7 @@ public class FileMonitoringService : BackgroundService
     {
         var rawFolder = _config["FileWatcher:MonitorFolder"] ?? "Documents";
         var monitorFolder = ResolveMonitorFolder(rawFolder);
+        var notesFolder = ResolveOptionalFolder(_config["FileWatcher:NotesFolder"]);
         var enableWatcher = bool.TryParse(_config["FileWatcher:EnableFileWatcher"], out var enable) && enable;
 
         if (!enableWatcher)
@@ -96,21 +116,80 @@ public class FileMonitoringService : BackgroundService
             return Task.CompletedTask;
         }
 
+        _fileWatcher.FileDetected += OnFileDetected;
+
         try
         {
-            // Subscribe to file detected events
-            _fileWatcher.FileDetected += OnFileDetected;
-
-            // Start watching
             _fileWatcher.Start(monitorFolder);
-            _logger.LogInformation($"File monitoring service started. Monitoring: {monitorFolder}");
-
-            return Task.CompletedTask;
+            if (notesFolder != null)
+            {
+                _fileWatcher.AddFolder(notesFolder);
+            }
+            _logger.LogInformation(
+                "File monitoring service started. Monitoring: {Folders}",
+                notesFolder == null ? monitorFolder : $"{monitorFolder} + notes {notesFolder}");
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Failed to start file monitoring: {ex.Message}");
-            throw;
+            _logger.LogWarning($"Could not immediately start file watcher for '{monitorFolder}': {ex.Message}. Will retry in background.");
+            _ = StartWatcherRetryLoopAsync(monitorFolder, notesFolder, stoppingToken);
+        }
+
+        // Start persistent background watchdog for long OBS recordings
+        _watchdogCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        _watchdogTask = Task.Run(() => ActiveRecordingWatchdogLoopAsync(_watchdogCts.Token), stoppingToken);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Resolves the optional separate notes/PDF folder. Blank means "PDFs live in the
+    /// recordings folder itself" and returns null so no second watcher is created.
+    /// </summary>
+    public static string? ResolveOptionalFolder(string? rawFolder)
+    {
+        if (string.IsNullOrWhiteSpace(rawFolder))
+        {
+            return null;
+        }
+
+        try
+        {
+            var resolved = ResolveMonitorFolder(rawFolder);
+            return string.IsNullOrWhiteSpace(resolved) ? null : resolved;
+        }
+        catch
+        {
+            // A bad path in config must never block the recordings watcher.
+            return null;
+        }
+    }
+
+    private async Task StartWatcherRetryLoopAsync(string monitorFolder, string? notesFolder, CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested && !_fileWatcher.IsRunning)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+                if (stoppingToken.IsCancellationRequested) break;
+
+                _fileWatcher.Start(monitorFolder);
+                if (notesFolder != null)
+                {
+                    _fileWatcher.AddFolder(notesFolder);
+                }
+                _logger.LogInformation($"File monitoring service successfully connected on retry. Monitoring: {monitorFolder}");
+                break;
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug($"Retry connecting watcher to '{monitorFolder}': {ex.Message}");
+            }
         }
     }
 
@@ -118,6 +197,11 @@ public class FileMonitoringService : BackgroundService
     {
         _fileWatcher.FileDetected -= OnFileDetected;
         _fileWatcher.Stop();
+        _watchdogCts?.Cancel();
+        if (_watchdogTask != null)
+        {
+            try { await _watchdogTask; } catch { }
+        }
         _logger.LogInformation("File monitoring service stopped");
         await base.StopAsync(cancellationToken);
     }
@@ -130,23 +214,158 @@ public class FileMonitoringService : BackgroundService
             return;
         }
 
-        // Fire and forget - process file asynchronously
-        _ = ProcessFileAsync(e);
+        _ = HandleDetectedFileAsync(e);
     }
 
-    private async Task ProcessFileAsync(FileDetectedEventArgs e)
+    private async Task HandleDetectedFileAsync(FileDetectedEventArgs e)
     {
-        // Debounce: prevent concurrent processing of the same file path.
-        // OS file watchers often fire Created+Changed+Changed rapidly for one file.
-        if (!_processingFiles.TryAdd(e.FilePath, 0))
+        if (string.IsNullOrWhiteSpace(e.FilePath) || !File.Exists(e.FilePath))
+            return;
+
+        var isVideo = e.FileType.Equals("VIDEO", StringComparison.OrdinalIgnoreCase);
+
+        if (isVideo)
         {
-            _logger.LogInformation("File already being processed, skipping duplicate event: {Path}", e.FilePath);
+            using var scope = _scopeFactory.CreateScope();
+            var fileValidator = scope.ServiceProvider.GetRequiredService<IFileValidator>();
+
+            // Check if file is already completely finished and stable (e.g. copied/dropped in)
+            var isStable = await fileValidator.IsFileStableAsync(e.FilePath, stabilityCheckMs: 1500);
+            if (!isStable)
+            {
+                // File is actively being written by OBS or a copy process.
+                // Add to persistent watchdog tracker so it will be monitored continuously without timeouts.
+                var added = _activeRecordings.TryAdd(e.FilePath, new ActiveRecordingState
+                {
+                    FilePath = e.FilePath,
+                    FileType = e.FileType,
+                    FirstDetectedUtc = DateTime.UtcNow,
+                    LastSizeChangeUtc = DateTime.UtcNow,
+                    LastSizeBytes = e.FileSizeBytes
+                });
+
+                if (added)
+                {
+                    _logger.LogInformation("Active OBS lecture recording detected: {Path}. Monitoring in background until recording finishes...", e.FilePath);
+                }
+                return;
+            }
+        }
+
+        // File is stable and complete - process immediately
+        await ProcessCompletedFileAsync(e.FilePath, e.FileType, e.FileSizeBytes, e.DetectedTime);
+    }
+
+    private async Task ActiveRecordingWatchdogLoopAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("OBS active recording watchdog background task active");
+        var pollIntervalSeconds = _config.GetValue("FileWatcher:ActiveRecordingPollSeconds", 15);
+        if (pollIntervalSeconds < 5) pollIntervalSeconds = 5;
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (!_activeRecordings.IsEmpty)
+                {
+                    using var scope = _scopeFactory.CreateScope();
+                    var fileValidator = scope.ServiceProvider.GetRequiredService<IFileValidator>();
+
+                    foreach (var kvp in _activeRecordings.ToArray())
+                    {
+                        var filePath = kvp.Key;
+                        var state = kvp.Value;
+
+                        if (!File.Exists(filePath))
+                        {
+                            _activeRecordings.TryRemove(filePath, out _);
+                            continue;
+                        }
+
+                        FileInfo fileInfo;
+                        try
+                        {
+                            fileInfo = new FileInfo(filePath);
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+
+                        var currentLength = fileInfo.Length;
+                        if (currentLength != state.LastSizeBytes)
+                        {
+                            state.LastSizeBytes = currentLength;
+                            state.LastSizeChangeUtc = DateTime.UtcNow;
+                        }
+
+                        var maxHours = _config.GetValue("FileWatcher:MaxRecordingHours", 8);
+                        var elapsed = DateTime.UtcNow - state.FirstDetectedUtc;
+                        var timeSinceLastChange = DateTime.UtcNow - state.LastSizeChangeUtc;
+
+                        // Timeout safety guard (default 8 hours)
+                        if (elapsed.TotalHours > maxHours && timeSinceLastChange.TotalMinutes > 30)
+                        {
+                            _logger.LogWarning("Recording timed out after {Hours:F1} hours of inactivity: {Path}", elapsed.TotalHours, filePath);
+                            _activeRecordings.TryRemove(filePath, out _);
+                            continue;
+                        }
+
+                        // Check if OBS closed the file handle and length is stable
+                        var isStable = await fileValidator.IsFileStableAsync(filePath, stabilityCheckMs: 2000);
+                        if (isStable)
+                        {
+                            if (currentLength >= 1024 * 1024)
+                            {
+                                if (_activeRecordings.TryRemove(filePath, out _))
+                                {
+                                    _logger.LogInformation(
+                                        "OBS lecture recording finalized and ready! Size: {SizeMB:F1} MB, Active duration: {Elapsed:hh\\:mm\\:ss}. Processing: {Path}",
+                                        currentLength / (1024.0 * 1024.0), elapsed, filePath);
+
+                                    _ = ProcessCompletedFileAsync(filePath, state.FileType, currentLength, fileInfo.LastWriteTime);
+                                }
+                                continue;
+                            }
+                        }
+
+                        // Status log every 60 seconds
+                        if (DateTime.UtcNow - state.LastLoggedUtc > TimeSpan.FromSeconds(60))
+                        {
+                            state.LastLoggedUtc = DateTime.UtcNow;
+                            _logger.LogInformation("OBS recording in progress: {FileName} ({SizeMB:F1} MB written, recording for {Elapsed:hh\\:mm\\:ss})...",
+                                Path.GetFileName(filePath), currentLength / (1024.0 * 1024.0), elapsed);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Error in OBS active recording watchdog: {Message}", ex.Message);
+            }
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(pollIntervalSeconds), stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    private async Task ProcessCompletedFileAsync(string filePath, string fileType, long fileSizeBytes, DateTime detectedTime)
+    {
+        if (!_processingFiles.TryAdd(filePath, 0))
+        {
+            _logger.LogInformation("File already being processed, skipping duplicate event: {Path}", filePath);
             return;
         }
 
         try
         {
-            _logger.LogInformation($"Processing detected file: {e.FilePath}");
+            _logger.LogInformation($"Processing detected file: {filePath}");
 
             using var scope = _scopeFactory.CreateScope();
             var fileValidator = scope.ServiceProvider.GetRequiredService<IFileValidator>();
@@ -154,40 +373,20 @@ public class FileMonitoringService : BackgroundService
             var matchingService = scope.ServiceProvider.GetRequiredService<MatchingService>();
             var queueService = scope.ServiceProvider.GetRequiredService<UploadQueueService>();
 
-            // Validate file
-            var (isValid, error) = await fileValidator.ValidateFileAsync(e.FilePath);
+            // Validate finalized file
+            var (isValid, error) = await fileValidator.ValidateFileAsync(filePath);
             if (!isValid)
             {
                 _logger.LogWarning($"File validation failed: {error}");
                 return;
             }
 
-            // Wait for file to be stable (retry for up to 60 seconds for recordings still being written)
-            const int maxStabilityRetries = 12;
-            const int stabilityDelayMs = 5000;
-            var isStable = false;
-            for (int attempt = 1; attempt <= maxStabilityRetries; attempt++)
-            {
-                isStable = await fileValidator.IsFileStableAsync(e.FilePath);
-                if (isStable) break;
-                if (attempt == maxStabilityRetries)
-                {
-                    _logger.LogWarning("File not stable after {Attempts} attempts ({TotalSec}s), skipping: {Path}",
-                        maxStabilityRetries, maxStabilityRetries * stabilityDelayMs / 1000, e.FilePath);
-                    return;
-                }
-                _logger.LogInformation("File not yet stable (attempt {Attempt}/{Max}), waiting {Delay}ms: {Path}",
-                    attempt, maxStabilityRetries, stabilityDelayMs, e.FilePath);
-                await Task.Delay(stabilityDelayMs);
-            }
-
-            // Skip files that were already detected on a previous run or rescan,
-            // otherwise every restart would re-create sessions for the same recordings.
+            // Skip files that were already detected on a previous run or rescan
             var lectureRepository = scope.ServiceProvider.GetRequiredService<ILectureRepository>();
-            var existingSession = await lectureRepository.GetByVideoLocalPathAsync(e.FilePath);
+            var existingSession = await lectureRepository.GetByFilePathAsync(filePath);
             if (existingSession != null)
             {
-                _logger.LogInformation($"File already has lecture session {existingSession.LectureSessionId}; skipping: {e.FilePath}");
+                _logger.LogInformation($"File already has lecture session {existingSession.LectureSessionId}; skipping: {filePath}");
                 return;
             }
 
@@ -195,49 +394,45 @@ public class FileMonitoringService : BackgroundService
             int durationSeconds = 60;
             try
             {
-                var metadata = await fileValidator.ExtractVideoMetadataAsync(e.FilePath);
+                var metadata = await fileValidator.ExtractVideoMetadataAsync(filePath);
                 if (metadata != null && metadata.DurationSeconds > 0)
                 {
                     durationSeconds = metadata.DurationSeconds;
                 }
                 else
                 {
-                    var estimatedMinutes = e.FileSizeBytes / (2 * 1024 * 1024);
+                    var estimatedMinutes = fileSizeBytes / (2 * 1024 * 1024);
                     durationSeconds = (int)Math.Max(60, estimatedMinutes * 60);
                 }
             }
             catch
             {
-                var estimatedMinutes = e.FileSizeBytes / (2 * 1024 * 1024);
+                var estimatedMinutes = fileSizeBytes / (2 * 1024 * 1024);
                 durationSeconds = (int)Math.Max(60, estimatedMinutes * 60);
             }
 
-            // A finished recording file's timestamp marks when recording ended
-            var detectedEnd = e.DetectedTime;
+            var detectedEnd = detectedTime;
             var detectedStart = detectedEnd.AddSeconds(-durationSeconds);
 
-            // ── Minimum duration gate ──────────────────────────────────────
-            // Skip short recordings (mic tests, accidental starts) from upload.
-            // PDFs are always allowed — they don't have a meaningful duration.
+            // Minimum duration gate for video
             var minDurationMinutes = _config.GetValue("FileWatcher:MinimumDurationMinutes", 10);
             if (minDurationMinutes > 0
-                && e.FileType.Equals("VIDEO", StringComparison.OrdinalIgnoreCase)
+                && fileType.Equals("VIDEO", StringComparison.OrdinalIgnoreCase)
                 && durationSeconds < minDurationMinutes * 60)
             {
                 var mins = durationSeconds / 60;
                 var secs = durationSeconds % 60;
                 _logger.LogInformation(
                     "Recording is {Min}m {Sec}s (< {Threshold} min threshold); skipped from upload: {Path}",
-                    mins, secs, minDurationMinutes, e.FilePath);
+                    mins, secs, minDurationMinutes, filePath);
 
-                // Still create a session so the dashboard shows what was skipped
                 var shortSession = await lectureService.CreateSessionAsync(
                     organizationId: _organizationId,
                     centerId: _centerId,
                     roomId: _roomId,
                     deviceId: _deviceId,
-                    videoFilePath: e.FilePath,
-                    videoFileSize: e.FileSizeBytes,
+                    videoFilePath: filePath,
+                    videoFileSize: fileSizeBytes,
                     detectedStart: detectedStart,
                     detectedEnd: detectedEnd);
 
@@ -254,23 +449,21 @@ public class FileMonitoringService : BackgroundService
                 centerId: _centerId,
                 roomId: _roomId,
                 deviceId: _deviceId,
-                videoFilePath: e.FilePath,
-                videoFileSize: e.FileSizeBytes,
+                videoFilePath: filePath,
+                videoFileSize: fileSizeBytes,
                 detectedStart: detectedStart,
                 detectedEnd: detectedEnd);
 
             _logger.LogInformation($"Created lecture session: {session.LectureSessionId}");
 
-            // Analyze and match
+            // Analyze and match against timetable
             var matchResult = await matchingService.AnalyzeAndAssignAsync(session);
             _logger.LogInformation($"Matching result: {matchResult.Decision} (confidence: {matchResult.ConfidenceScore}%)");
 
-            // "Already scheduled" guard: if this slot already has an accepted lecture,
-            // hold the new video as a duplicate instead of silently uploading it twice.
-            // Notes/PDFs share the slot with the lecture video, so they are exempt.
+            // Duplicate slot check for videos
             if (matchResult.Decision == MatchingDecision.AutoAssigned
                 && matchResult.MatchedSlot != null
-                && e.FileType.Equals("VIDEO", StringComparison.OrdinalIgnoreCase))
+                && fileType.Equals("VIDEO", StringComparison.OrdinalIgnoreCase))
             {
                 var centerLectures = await lectureRepository.GetByCenterAndDateAsync(_centerId, session.DetectedStartTime.Date);
                 if (DuplicateSlotChecker.HasAcceptedDuplicate(centerLectures, matchResult.MatchedSlot, session.LectureSessionId))
@@ -285,13 +478,41 @@ public class FileMonitoringService : BackgroundService
                 }
             }
 
-            // Enqueue for upload only when the lecture has a batch - the Drive folder
-            // is the pre-created batch folder, so an unbatched file has nowhere to go.
+            // Cover slide OCR fallback for PDFs: If no timetable match assigned a batch,
+            // check if cover slide OCR extracted batch and subject
+            if (fileType.Equals("PDF", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(session.BatchId))
+            {
+                var pdfHints = LectureAgent.Infrastructure.Matching.PdfTextExtractor.Extract(filePath);
+                if (pdfHints.HasHints && pdfHints.BatchCodes.Count > 0)
+                {
+                    session.BatchId = pdfHints.BatchCodes[0];
+                    if (pdfHints.Subjects.Count > 0 && string.IsNullOrWhiteSpace(session.SubjectId))
+                    {
+                        session.SubjectId = pdfHints.Subjects[0];
+                    }
+                    if (!string.IsNullOrWhiteSpace(pdfHints.TeacherName) && string.IsNullOrWhiteSpace(session.TeacherId))
+                    {
+                        session.TeacherId = pdfHints.TeacherName;
+                    }
+                    session.ConfidenceScore = 95;
+                    session.Status = LectureStatus.AutoAssigned;
+                    session.MatchingReason = "Auto-assigned from whiteboard cover slide OCR";
+                    session.DriveFolderPath = !string.IsNullOrWhiteSpace(session.SubjectId)
+                        ? $"{session.BatchId}/{session.SubjectId}"
+                        : session.BatchId;
+                    await lectureRepository.UpdateAsync(session);
+                    await lectureRepository.SaveChangesAsync();
+                    _logger.LogInformation($"Auto-assigned PDF {session.LectureSessionId} from whiteboard OCR: {session.BatchId}/{session.SubjectId}");
+                }
+            }
+
+            // Enqueue for upload
             if (matchResult.Decision != MatchingDecision.NoMatch
                 || _queueUnmatchedFiles
-                || e.FileType.Equals("PDF", StringComparison.OrdinalIgnoreCase))
+                || fileType.Equals("PDF", StringComparison.OrdinalIgnoreCase)
+                || !string.IsNullOrWhiteSpace(session.BatchId))
             {
-                if (matchResult.Decision == MatchingDecision.NoMatch)
+                if (matchResult.Decision == MatchingDecision.NoMatch && string.IsNullOrWhiteSpace(session.BatchId))
                 {
                     session.Status = LectureStatus.ExtraLecture;
                     await lectureService.UpdateStatusAsync(
@@ -319,15 +540,14 @@ public class FileMonitoringService : BackgroundService
 
                 var queueEntry = await queueService.EnqueueFileAsync(
                     lectureSessionId: session.LectureSessionId,
-                    fileType: e.FileType,
-                    localFilePath: e.FilePath,
-                    fileSizeBytes: e.FileSizeBytes,
+                    fileType: fileType,
+                    localFilePath: filePath,
+                    fileSizeBytes: fileSizeBytes,
                     fileHash: session.VideoFileHash,
                     driveFolderPath: session.DriveFolderPath);
 
                 if (queueEntry == null)
                 {
-                    // Identical content already queued/uploaded - never upload twice.
                     await lectureService.UpdateStatusAsync(
                         session.LectureSessionId,
                         LectureStatus.Duplicate,
@@ -339,7 +559,7 @@ public class FileMonitoringService : BackgroundService
             }
             else
             {
-                _logger.LogInformation($"File not queued (no match): {e.FilePath}");
+                _logger.LogInformation($"File not queued (no match): {filePath}");
             }
         }
         catch (Exception ex)
@@ -348,7 +568,7 @@ public class FileMonitoringService : BackgroundService
         }
         finally
         {
-            _processingFiles.TryRemove(e.FilePath, out _);
+            _processingFiles.TryRemove(filePath, out _);
         }
     }
 

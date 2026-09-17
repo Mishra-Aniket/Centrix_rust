@@ -13,35 +13,88 @@ internal static class AppPaths
     {
         get
         {
-            var beside = Path.GetFullPath(Path.Combine(InstallDirectory, "..", "agent", "LectureAgent.exe"));
-            if (File.Exists(beside))
+            var candidates = new[]
             {
-                return beside;
+                Path.GetFullPath(Path.Combine(InstallDirectory, "..", "agent", "CentrixAgent.exe")),
+                Path.GetFullPath(Path.Combine(InstallDirectory, "..", "agent", "LectureAgent.exe")),
+                Path.GetFullPath(Path.Combine(InstallDirectory, "..", "agent", "Centrix.exe")),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Centrix", "agent", "CentrixAgent.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Centrix", "agent", "LectureAgent.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Centrix", "agent", "Centrix.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "LectureAgentApp", "agent", "LectureAgent.exe")
+            };
+
+            foreach (var candidate in candidates)
+            {
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
             }
 
-            var programDataCentrix = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-                "Centrix", "agent", "LectureAgent.exe");
-            if (File.Exists(programDataCentrix))
-            {
-                return programDataCentrix;
-            }
-
-            var programData = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-                "LectureAgentApp", "agent", "LectureAgent.exe");
-            if (File.Exists(programData))
-            {
-                return programData;
-            }
-
-            return beside;
+            return candidates[0];
         }
     }
 
-    internal static string SharedRoot { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        "LectureAgent");
+    internal static string SharedRoot
+    {
+        get
+        {
+            // 1. Explicit environment override
+            var envRoot = Environment.GetEnvironmentVariable("CENTRIX_SHARED_ROOT")
+                       ?? Environment.GetEnvironmentVariable("LA_SETUP_ROOT");
+            if (!string.IsNullOrWhiteSpace(envRoot) && Directory.Exists(envRoot))
+            {
+                return envRoot;
+            }
+
+            // 2. Check if installed in a custom directory (<root>\app -> parent is <root>)
+            try
+            {
+                var parentDir = Path.GetFullPath(Path.Combine(InstallDirectory, ".."));
+                if (File.Exists(Path.Combine(parentDir, "appsettings.json")) || Directory.Exists(Path.Combine(parentDir, "config")))
+                {
+                    return parentDir;
+                }
+            }
+            catch { }
+
+            // 3. Fall back to standard ProgramData\Centrix
+            var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            var centrixRoot = Path.Combine(programData, "Centrix");
+            var legacyRoot = Path.Combine(programData, "LectureAgent");
+
+            try
+            {
+                if (Directory.Exists(legacyRoot) && !Directory.Exists(Path.Combine(centrixRoot, "config")))
+                {
+                    Directory.CreateDirectory(centrixRoot);
+                    foreach (var dir in new[] { "config", "data", "logs" })
+                    {
+                        var src = Path.Combine(legacyRoot, dir);
+                        var dst = Path.Combine(centrixRoot, dir);
+                        if (Directory.Exists(src) && !Directory.Exists(dst))
+                        {
+                            Directory.CreateDirectory(dst);
+                            foreach (var f in Directory.GetFiles(src))
+                            {
+                                File.Copy(f, Path.Combine(dst, Path.GetFileName(f)), true);
+                            }
+                        }
+                    }
+                    var legacySettings = Path.Combine(legacyRoot, "appsettings.json");
+                    var targetSettings = Path.Combine(centrixRoot, "appsettings.json");
+                    if (File.Exists(legacySettings) && !File.Exists(targetSettings))
+                    {
+                        File.Copy(legacySettings, targetSettings, true);
+                    }
+                }
+            }
+            catch { }
+
+            return centrixRoot;
+        }
+    }
 
     internal static string SettingsFile { get; } = Path.Combine(SharedRoot, "appsettings.json");
 
@@ -51,7 +104,7 @@ internal static class AppPaths
 
     internal static string WebViewUserData { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "LectureAgent",
+        "Centrix",
         "WebView2");
 
     internal static string AppIcon

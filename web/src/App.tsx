@@ -4,6 +4,7 @@ import {
   Building2,
   Calendar,
   CheckCircle2,
+  Folder,
   FolderEdit,
   Plus,
   Radio,
@@ -15,6 +16,7 @@ import type {
   ControlState,
   HealthStatus,
   LectureSession,
+  LectureSummary,
   MissingSlot,
   MonitorSnapshot,
   QueueEntry,
@@ -23,6 +25,7 @@ import type {
   TimetableOverride,
   TimetableSummary,
 } from './types';
+import { STANDARD_SUBJECTS } from './types';
 import * as api from './api';
 import { clearApiKey, isConfigured, onUnauthorized } from './config';
 import { LoginScreen } from './screens/Login';
@@ -34,8 +37,10 @@ import { CenterScreen } from './screens/Center';
 import { StudioLiveScreen } from './screens/StudioLive';
 import { DriveFolderPicker } from './components/DriveFolderPicker';
 import { VideoThumbnail } from './components/VideoThumbnail';
+import { CentrixLogo } from './components/CentrixLogo';
+import { SearchableRoomSelect } from './components/SearchableRoomSelect';
 import { ActionButton, Field, Modal, inputClass } from './ui';
-import { isTauri, getServiceStatus, readSettings, notify, getBandwidthSettings } from './tauri';
+import { isTauri, getServiceStatus, readSettings, notify } from './tauri';
 import { SetupWizard } from './screens/SetupWizard';
 
 type Tab = 'live' | 'review' | 'schedule' | 'center' | 'studio' | 'controls';
@@ -65,7 +70,7 @@ export function App() {
   );
 
   if (checkingSetup) {
-    return <div className="flex items-center justify-center h-screen bg-[#1b1033]"><div className="text-white text-lg">Loading Centrix...</div></div>;
+    return <div className="flex items-center justify-center h-screen bg-slate-950"><div className="text-white text-lg font-semibold">Loading Centrix...</div></div>;
   }
 
   if (needsSetup) {
@@ -76,7 +81,15 @@ export function App() {
     return <LoginScreen onConnected={() => setAuthed(true)} />;
   }
 
-  return <Dashboard onLogout={() => { clearApiKey(); setAuthed(false); }} />;
+  return (
+    <Dashboard
+      onLogout={() => {
+        sessionStorage.setItem('lasrs.loggedOut', 'true');
+        clearApiKey();
+        setAuthed(false);
+      }}
+    />
+  );
 }
 
 function Dashboard({ onLogout }: { onLogout: () => void }) {
@@ -86,6 +99,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
   const [controlState, setControlState] = useState<ControlState | null>(null);
   const [lectures, setLectures] = useState<LectureSession[]>([]);
+  const [lectureSummary, setLectureSummary] = useState<LectureSummary | null>(null);
   const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
   const [overrides, setOverrides] = useState<TimetableOverride[]>([]);
   const [missingSlots, setMissingSlots] = useState<MissingSlot[]>([]);
@@ -105,6 +119,29 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [serviceState, setServiceState] = useState<string>('unknown');
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('centrix.theme') as 'dark' | 'light') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('centrix.theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [profileMenuOpen]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -139,7 +176,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       const center = info?.centerId || agentInfoRef.current?.centerId || '';
       const room = selectedRoom || info?.roomId || '603';
 
-      const [hData, sData, lData, tData, oData, cData, mData, datesData, roomsData, summaryData] = await Promise.all([
+      const [hData, sData, lData, tData, oData, cData, mData, datesData, roomsData, summaryData, lectureSummaryData] = await Promise.all([
         api.fetchHealth().catch(() => null),
         api.fetchSnapshot(24, room).catch(() => null),
         api.fetchLectures(center, 30).catch(() => null),
@@ -150,6 +187,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         center ? api.fetchTimetableDates(center, room).catch(() => null) : Promise.resolve(null),
         center ? api.fetchTimetableRooms(center).catch(() => null) : Promise.resolve(null),
         center ? api.fetchTimetableSummary(center).catch(() => null) : Promise.resolve(null),
+        center ? api.fetchLectureSummary(center).catch(() => null) : Promise.resolve(null),
       ]);
 
       if (hData) setHealth(hData);
@@ -161,6 +199,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       if (datesData) setAvailableDates(datesData);
       if (roomsData) setTimetableRooms(roomsData);
       if (summaryData) setTimetableSummary(summaryData);
+      setLectureSummary(lectureSummaryData);
       setMissingSlots(mData ?? []);
     } catch (err) {
       console.error('Failed to load data:', err);
@@ -312,7 +351,10 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     const s = (subject || lecture.subjectId || 'PHYSICS').trim();
     const t = (teacher || lecture.teacherId || '').trim();
-    const d = (driveFolder || lecture.driveFolderPath || b).trim();
+    let d = (driveFolder || lecture.driveFolderPath || b).trim();
+    if (s && !d.includes('/') && !d.includes('\\')) {
+      d = `${d}/${s}`;
+    }
     await runAction(
       () => api.confirmLecture(lecture.lectureSessionId, b, s, t, 'Web Dashboard', d),
       `✅ Routed to "${d}" for ${b} / ${s}!`
@@ -328,8 +370,74 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     await loadData();
   };
 
-  const handleRematch = (lecture: LectureSession) =>
-    runAction(() => api.rematchLecture(lecture.lectureSessionId), '🔄 Matching engine re-run for this lecture');
+  const handleRematch = async (lecture: LectureSession) => {
+    setBusy(true);
+    try {
+      const result = await api.rematchLecture(lecture.lectureSessionId);
+      showToast(`${result.success ? '✅' : '⚠️'} ${result.message}`);
+      await loadData();
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Matching could not be re-run';
+      showToast(`❌ ${message}`);
+      throw err;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRetryLectureUpload = async (lectureId: string) => {
+    setBusy(true);
+    try {
+      const result = await api.retryLectureUpload(lectureId);
+      showToast(`${result.success ? '✅' : '⚠️'} ${result.message}`);
+      await loadData();
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Upload retry could not be queued';
+      showToast(`❌ ${message}`);
+      throw err;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRunQc = async (lectureId: string) => {
+    setBusy(true);
+    try {
+      const result = await api.fetchLectureQc(lectureId);
+      showToast(`${result.success ? '✅' : '⚠️'} ${result.message}`);
+      await loadData();
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'QC could not be run';
+      showToast(`❌ ${message}`);
+      throw err;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleYouTubeAction = async (
+    lectureId: string,
+    action: 'publish' | 'unpublish'
+  ) => {
+    setBusy(true);
+    try {
+      const result = action === 'publish'
+        ? await api.publishLectureToYouTube(lectureId)
+        : await api.unpublishLectureFromYouTube(lectureId);
+      showToast(`${result.success ? '✅' : '⚠️'} ${result.message}`);
+      await loadData();
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `YouTube ${action} request failed`;
+      showToast(`❌ ${message}`);
+      throw err;
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleForceEnqueue = (lecture: LectureSession) =>
     runAction(() => api.forceEnqueueLecture(lecture.lectureSessionId), '⬆️ Upload queued despite duplicate flag');
@@ -508,6 +616,11 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   const duplicates = useMemo(() => lectures.filter((l) => l.status === 'Duplicate'), [lectures]);
 
+  const completedLectures = useMemo(
+    () => lectures.filter((l) => l.status === 'Uploaded' || l.status === 'Verified'),
+    [lectures]
+  );
+
   const rooms = useMemo(() => {
     const set = new Set<string>();
     if (agentInfo?.roomId) set.add(agentInfo.roomId);
@@ -587,112 +700,199 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   ];
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50 text-slate-900 font-sans select-none">
+    <div className="flex flex-col min-h-screen bg-[var(--cream)] text-[var(--ink)] font-sans select-none">
+      {/* 2px Progress bar from officemobile */}
+      <div className="h-[2px] w-full bg-[var(--rule)]">
+        <div className="h-full bg-[var(--ink)] w-full transition-all duration-300" />
+      </div>
+
       {/* Toast */}
       {toast && (
         <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-center pointer-events-none">
-          <div className="bg-slate-900/95 text-white px-4 py-3 rounded-2xl shadow-xl backdrop-blur-md text-xs font-semibold">
+          <div className="bg-[var(--ink)] text-[var(--cream)] border border-[var(--rule)] px-4 py-2.5 shadow-2xl font-mono text-xs uppercase tracking-wider">
             {toast}
           </div>
         </div>
       )}
 
       {/* Top Header */}
-      <header className="sticky top-0 z-30 bg-white/95 border-b border-slate-200/90 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center p-1 shadow-xs shrink-0">
-            <img src="/logo.png" alt="PW Logo" className="w-full h-full object-contain" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              {isTauri() && (
-                <span className={`inline-block w-2.5 h-2.5 rounded-full mr-1.5 ${
-                  serviceState === 'Running' ? 'bg-emerald-400' :
-                  serviceState === 'Stopped' ? 'bg-red-400' :
-                  serviceState === 'NotInstalled' ? 'bg-gray-400' :
-                  'bg-amber-400'
-                }`} title={`Agent: ${serviceState}`} />
-              )}
-              <span className="font-bold text-base tracking-tight text-slate-900">Centrix</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-cyan-50 text-cyan-700 border border-cyan-200 font-semibold font-mono">PW Ops</span>
-            </div>
-            <p className="text-[11px] text-slate-500 truncate max-w-[180px] sm:max-w-none">
-              Center: <strong className="text-slate-800">{agentInfo?.centerId || '...'}</strong>
-            </p>
-          </div>
+      <header className="sticky top-0 z-30 bg-[var(--cream)]/95 border-b border-[var(--rule)] backdrop-blur-md px-4 sm:px-8 py-3 flex items-center justify-between">
+        {/* Left / Center Branding matching officemobile */}
+        <div className="flex items-center gap-2.5">
+          <CentrixLogo size={24} />
+          <span className="font-serif text-xl tracking-tight text-[var(--ink)]">
+            Centrix
+          </span>
         </div>
 
-        {/* Desktop Navigation Tabs (Visible on md and up) */}
-        <nav className="hidden md:flex items-center gap-1 bg-slate-100/90 p-1 rounded-2xl border border-slate-200/70 shadow-2xs">
-          {navigationTabs.map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150 ${
-                  active
-                    ? 'bg-white text-cyan-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                }`}
-              >
-                <Icon className={`w-4 h-4 ${active ? 'text-cyan-600' : 'text-slate-400'}`} />
-                <span>{tab.label}</span>
-                {tab.badge ? (
-                  <span className="ml-1 px-1.5 py-0.2 bg-amber-500 text-white font-bold text-[10px] rounded-full shadow-xs">
-                    {tab.badge}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Right Action Controls */}
-        <div className="flex items-center gap-2 sm:gap-2.5">
-          {/* Quick Room Selector (Visible on desktop lg:) */}
+        {/* Right Action Controls & Profile Avatar from officemobile screenshot 2 */}
+        <div className="flex items-center gap-3 relative">
+          {/* Quick Room Selector with in-app Search */}
           {rooms.length > 0 && (
-            <div className="hidden lg:flex items-center gap-1.5">
-              <select
-                value={effectiveRoom}
-                onChange={(e) => setSelectedRoom(e.target.value)}
-                className="text-xs font-bold py-1.5 px-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-800 shadow-2xs hover:border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-cyan-500/30 cursor-pointer transition"
-                title="Quick Room Switcher"
-              >
-                <option value="ALL">All Rooms ({rooms.length})</option>
-                {rooms.map((r) => (
-                  <option key={r} value={r}>
-                    Room {r} {r === agentInfo?.roomId ? '★ (This PC)' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SearchableRoomSelect
+              rooms={rooms}
+              selectedRoom={effectiveRoom}
+              onSelectRoom={setSelectedRoom}
+              localRoomId={agentInfo?.roomId}
+              compact={true}
+              className="hidden sm:block min-w-[170px]"
+            />
           )}
 
           {/* Live Status Pill */}
-          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold shadow-2xs ${
-            health?.status === 'Healthy'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-              : 'bg-red-50 border-red-200 text-red-700'
-          }`}>
-            <span className={`w-2 h-2 rounded-full ${health?.status === 'Healthy' ? 'bg-emerald-500 animate-ping' : 'bg-red-500'}`} />
-            <span>{health?.status === 'Healthy' ? 'Agent Live' : 'Offline'}</span>
+          <div
+            title={`Agent Service: ${serviceState}`}
+            className="flex items-center gap-1.5 px-2 py-0.5 border border-[var(--rule)] text-[10px] font-mono uppercase tracking-wider text-[var(--stone)]"
+          >
+            <span className={`w-1.5 h-1.5 ${health?.status === 'Healthy' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+            <span>{health?.status === 'Healthy' ? 'Live' : 'Offline'}</span>
           </div>
 
           <button
             onClick={loadData}
             disabled={loading}
-            className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 shadow-xs active:scale-95 transition"
+            className="p-1 border border-[var(--rule)] text-[var(--stone)] hover:text-[var(--ink)] hover:bg-[var(--paper)] transition cursor-pointer"
             title="Refresh"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-600' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[var(--ink)]' : ''}`} />
           </button>
+
+          {/* 1-Click Direct Theme Switcher */}
+          <button
+            onClick={toggleTheme}
+            className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider border border-[var(--rule)] bg-[var(--paper)] text-[var(--ink)] hover:bg-[var(--cream)] transition cursor-pointer hidden sm:flex items-center gap-1"
+            title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+          >
+            <span>{theme === 'dark' ? '☀ LIGHT' : '☾ DARK'}</span>
+          </button>
+
+          {/* User Profile Avatar with Click-Outside Dropdown */}
+          <div ref={profileMenuRef} className="relative">
+            <button
+              onClick={() => setProfileMenuOpen((prev) => !prev)}
+              className="w-8 h-8 rounded-full border border-[var(--rule)] bg-[var(--paper)] text-[var(--ink)] flex items-center justify-center font-mono text-xs font-bold uppercase hover:border-[var(--stone)] cursor-pointer transition shadow-xs"
+              title="User Menu"
+            >
+              <span className="text-[11px]">AM</span>
+            </button>
+
+            {profileMenuOpen && (
+              <div className="absolute right-0 top-11 w-64 bg-[var(--paper)] border border-[var(--rule)] shadow-2xl z-50 animate-om-dropdown">
+                <div className="p-3.5 border-b border-[var(--rule)] flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full border border-[var(--rule)] bg-[var(--cream)] text-[var(--ink)] flex items-center justify-center font-mono text-xs font-bold shrink-0">
+                    AM
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-serif font-medium text-[var(--ink)] truncate">Aniket Mishra</div>
+                    <div className="text-[10px] font-mono text-[var(--stone)] truncate">aniketmishra492@gmail.com</div>
+                  </div>
+                </div>
+
+                <div className="py-1 text-xs font-mono">
+                  <button
+                    onClick={() => { setActiveTab('live'); setProfileMenuOpen(false); }}
+                    className={`w-full px-3 py-2 text-left flex items-center gap-2.5 transition cursor-pointer ${
+                      activeTab === 'live' ? 'bg-[var(--cream)] text-[var(--ink)] font-bold' : 'text-[var(--stone)] hover:text-[var(--ink)] hover:bg-[var(--cream)]'
+                    }`}
+                  >
+                    <Radio className="w-3.5 h-3.5" />
+                    <span>Live Monitor</span>
+                  </button>
+                  <button
+                    onClick={() => { setActiveTab('review'); setProfileMenuOpen(false); }}
+                    className={`w-full px-3 py-2 text-left flex items-center gap-2.5 transition cursor-pointer ${
+                      activeTab === 'review' ? 'bg-[var(--cream)] text-[var(--ink)] font-bold' : 'text-[var(--stone)] hover:text-[var(--ink)] hover:bg-[var(--cream)]'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Lecture Review</span>
+                  </button>
+                  <button
+                    onClick={() => { setActiveTab('schedule'); setProfileMenuOpen(false); }}
+                    className={`w-full px-3 py-2 text-left flex items-center gap-2.5 transition cursor-pointer ${
+                      activeTab === 'schedule' ? 'bg-[var(--cream)] text-[var(--ink)] font-bold' : 'text-[var(--stone)] hover:text-[var(--ink)] hover:bg-[var(--cream)]'
+                    }`}
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>Timetable Schedule</span>
+                  </button>
+                  <button
+                    onClick={() => { setActiveTab('studio'); setProfileMenuOpen(false); }}
+                    className={`w-full px-3 py-2 text-left flex items-center gap-2.5 transition cursor-pointer ${
+                      activeTab === 'studio' ? 'bg-[var(--cream)] text-[var(--ink)] font-bold' : 'text-[var(--stone)] hover:text-[var(--ink)] hover:bg-[var(--cream)]'
+                    }`}
+                  >
+                    <Activity className="w-3.5 h-3.5" />
+                    <span>Studio Live Feed</span>
+                  </button>
+                  <button
+                    onClick={() => { setActiveTab('center'); setProfileMenuOpen(false); }}
+                    className={`w-full px-3 py-2 text-left flex items-center gap-2.5 transition cursor-pointer ${
+                      activeTab === 'center' ? 'bg-[var(--cream)] text-[var(--ink)] font-bold' : 'text-[var(--stone)] hover:text-[var(--ink)] hover:bg-[var(--cream)]'
+                    }`}
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>Center Multi-Room</span>
+                  </button>
+                  <button
+                    onClick={() => { setActiveTab('controls'); setProfileMenuOpen(false); }}
+                    className={`w-full px-3 py-2 text-left flex items-center gap-2.5 transition cursor-pointer ${
+                      activeTab === 'controls' ? 'bg-[var(--cream)] text-[var(--ink)] font-bold' : 'text-[var(--stone)] hover:text-[var(--ink)] hover:bg-[var(--cream)]'
+                    }`}
+                  >
+                    <Settings2 className="w-3.5 h-3.5" />
+                    <span>System Controls</span>
+                  </button>
+                </div>
+
+                <div className="border-t border-[var(--rule)] p-2 grid grid-cols-2 gap-1.5 text-[10px] font-mono uppercase tracking-wider">
+                  <button
+                    onClick={() => { toggleTheme(); setProfileMenuOpen(false); }}
+                    className="py-1.5 px-2 border border-[var(--rule)] hover:bg-[var(--cream)] text-[var(--ink)] text-center cursor-pointer transition"
+                  >
+                    {theme === 'dark' ? '☀ LIGHT' : '☾ DARK'}
+                  </button>
+                  <button
+                    onClick={() => { setProfileMenuOpen(false); onLogout(); }}
+                    className="py-1.5 px-2 border border-red-800/40 text-red-500 hover:bg-red-950/20 text-center cursor-pointer transition"
+                  >
+                    ⏻ LOG OUT
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* Content Body */}
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6 pb-24 md:pb-12">
+      {/* Content Body with Wide Breathing Room (Eliminates excessive empty margins) */}
+      <main className="flex-1 px-4 sm:px-8 lg:px-12 py-6 max-w-[1720px] w-full mx-auto space-y-6 pb-24 md:pb-12 animate-om-fade">
+        {/* Full-width connected segmented tab control matching officemobile */}
+        <div className="grid grid-cols-3 sm:grid-cols-6 border border-[var(--rule)] bg-[var(--paper)]">
+          {navigationTabs.map((tab, idx) => {
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`py-3 px-2 font-mono text-xs uppercase tracking-wider text-center transition-colors cursor-pointer ${
+                  idx > 0 ? 'border-l border-[var(--rule)]' : ''
+                } ${
+                  active
+                    ? 'bg-[var(--ink)] text-[var(--cream)] font-bold'
+                    : 'bg-transparent text-[var(--stone)] hover:text-[var(--ink)] hover:bg-[var(--cream)]'
+                }`}
+              >
+                <span>{tab.label}</span>
+                {tab.badge ? (
+                  <span className={`ml-1 text-[9px] ${active ? 'text-[var(--cream)]' : 'text-[var(--stone)]'}`}>
+                    [{tab.badge}]
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
         {activeTab === 'live' && (
           <LiveScreen
             health={health}
@@ -716,7 +916,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         {activeTab === 'review' && (
           <ReviewScreen
             pendingReviews={pendingReviews}
+            completedLectures={completedLectures}
             duplicates={duplicates}
+            summary={lectureSummary ?? undefined}
             failedQueueItems={failedQueueItems}
             queueItems={snapshot?.queue || []}
             rooms={rooms}
@@ -733,6 +935,10 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
               })
             }
             onRematch={handleRematch}
+            onRetryLectureUpload={handleRetryLectureUpload}
+            onRunQc={handleRunQc}
+            onPublishToYouTube={(lectureId) => handleYouTubeAction(lectureId, 'publish')}
+            onUnpublishFromYouTube={(lectureId) => handleYouTubeAction(lectureId, 'unpublish')}
             onForceEnqueue={handleForceEnqueue}
             onEditUploadFolder={handleOpenFolderModal}
             onRetryUpload={handleRetryEntry}
@@ -836,9 +1042,13 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-500 font-mono">
-                  {new Date(overrideModal.lecture.detectedStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {overrideModal.lecture.detectedStartTime
+                    ? new Date(overrideModal.lecture.detectedStartTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                    : '--:--'}
                   {' - '}
-                  {new Date(overrideModal.lecture.detectedEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {overrideModal.lecture.detectedEndTime
+                    ? new Date(overrideModal.lecture.detectedEndTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                    : '--:--'}
                 </div>
               </div>
 
@@ -852,41 +1062,84 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
             </div>
           )}
 
-          {/* Direct Google Drive Folder Selector */}
-          <DriveFolderPicker
-            value={overrideModal.driveFolderPath}
-            onChange={(f) =>
-              setOverrideModal((prev) => ({
-                ...prev,
-                driveFolderPath: f,
-                batchId: prev.batchId && prev.batchId !== 'Unassigned' ? prev.batchId : f,
-              }))
-            }
-          />
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Target Batch Name">
-              <input
-                type="text"
-                value={overrideModal.batchId}
-                onChange={(e) => setOverrideModal((prev) => ({ ...prev, batchId: e.target.value }))}
-                placeholder="e.g. 11TH-JEE-A"
-                className={inputClass}
-                required
-              />
-            </Field>
-            <Field label="Subject">
-              <input
-                type="text"
-                value={overrideModal.subjectId}
-                onChange={(e) => setOverrideModal((prev) => ({ ...prev, subjectId: e.target.value }))}
-                placeholder="e.g. PHYSICS"
-                className={inputClass}
-                required
-              />
-            </Field>
+          {/* Real-time Target Destination Path Bar */}
+          <div className="bg-emerald-50/90 border border-emerald-200/90 rounded-2xl p-3 flex items-center justify-between text-xs font-mono text-emerald-950 shadow-2xs">
+            <div className="flex items-center gap-2.5 truncate min-w-0">
+              <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                <Folder className="w-4 h-4" />
+              </div>
+              <div className="min-w-0 truncate">
+                <span className="text-[10px] uppercase font-bold text-emerald-700 tracking-wider block font-sans">
+                  Target Destination
+                </span>
+                <div className="flex items-center gap-1.5 font-mono text-xs truncate">
+                  <span className="text-emerald-700/80 font-sans">Google Drive /</span>
+                  <strong className="font-bold text-slate-900 truncate">
+                    {(overrideModal.batchId || '').trim() || 'Select Batch'}
+                  </strong>
+                  <span className="text-emerald-600 font-bold">/</span>
+                  <strong className="font-bold text-emerald-800 uppercase">
+                    {(overrideModal.subjectId || '').trim() || 'PHYSICS'}
+                  </strong>
+                </div>
+              </div>
+            </div>
+            <span className="text-[10px] font-sans font-bold px-2.5 py-1 rounded-lg bg-emerald-100/90 text-emerald-800 border border-emerald-200/80 shrink-0">
+              Auto-Route
+            </span>
           </div>
 
+          {/* 1. Direct Batch / Drive Folder Selector with Autocomplete */}
+          <DriveFolderPicker
+            value={overrideModal.batchId}
+            onChange={(val) => {
+              setOverrideModal((prev) => ({
+                ...prev,
+                batchId: val,
+                driveFolderPath: val,
+              }));
+            }}
+            placeholder="Search or type Google Drive folder (e.g. 27-AJ273MA 2027)..."
+            autoFocus
+            label="Batch / Google Drive Folder"
+            showBreadcrumb={false}
+          />
+
+          {/* 2. Subject with Quick Chips */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-slate-800">
+              Subject <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={overrideModal.subjectId}
+              onChange={(e) => setOverrideModal((prev) => ({ ...prev, subjectId: e.target.value }))}
+              placeholder="e.g. Physics"
+              className={inputClass}
+              required
+            />
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {STANDARD_SUBJECTS.map((sub) => {
+                const active = overrideModal.subjectId?.trim().toUpperCase() === sub.toUpperCase();
+                return (
+                  <button
+                    key={sub}
+                    type="button"
+                    onClick={() => setOverrideModal((prev) => ({ ...prev, subjectId: sub }))}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all active:scale-95 ${
+                      active
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                        : 'bg-slate-100 hover:bg-slate-200/90 text-slate-700 hover:text-slate-900 border-slate-200/80'
+                    }`}
+                  >
+                    {sub}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 3. Teacher (Optional) */}
           <Field label="Teacher (Optional)">
             <input
               type="text"
@@ -917,19 +1170,24 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           </button>
           <ActionButton
             tone="primary"
-            onClick={() =>
+            onClick={() => {
+              const batch = (overrideModal.batchId || '').trim();
+              const subject = (overrideModal.subjectId || '').trim() || 'PHYSICS';
+              const teacher = (overrideModal.teacherId || '').trim();
+              if (!overrideModal.lecture || !batch) return;
+              const fullFolder = batch.includes('/') ? batch : `${batch}/${subject}`;
               handleConfirm(
-                overrideModal.lecture!,
-                overrideModal.batchId,
-                overrideModal.subjectId,
-                overrideModal.teacherId,
-                overrideModal.driveFolderPath
-              )
-            }
-            disabled={busy || !overrideModal.driveFolderPath.trim()}
+                overrideModal.lecture,
+                batch,
+                subject,
+                teacher,
+                fullFolder
+              );
+            }}
+            disabled={busy || !(overrideModal.batchId || '').trim()}
             className="flex-2 py-2.5 text-xs font-bold shadow-lg shadow-cyan-500/20"
           >
-            🚀 Approve & Route to Drive
+            🚀 Approve & Upload {(overrideModal.batchId || '').trim() ? `to "${(overrideModal.batchId || '').trim()}/${(overrideModal.subjectId || '').trim() || 'Physics'}"` : ''}
           </ActionButton>
         </div>
       </Modal>
@@ -990,10 +1248,29 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 type="text"
                 value={addSlotModal.subjectId}
                 onChange={(e) => setAddSlotModal((prev) => ({ ...prev, subjectId: e.target.value }))}
-                placeholder="e.g. PHYSICS"
+                placeholder="e.g. Physics"
                 className={inputClass}
                 required
               />
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {STANDARD_SUBJECTS.map((sub) => {
+                  const active = addSlotModal.subjectId?.trim().toUpperCase() === sub.toUpperCase();
+                  return (
+                    <button
+                      key={sub}
+                      type="button"
+                      onClick={() => setAddSlotModal((prev) => ({ ...prev, subjectId: sub }))}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all active:scale-95 ${
+                        active
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                          : 'bg-slate-100 hover:bg-slate-200/90 text-slate-700 hover:text-slate-900 border-slate-200/80'
+                      }`}
+                    >
+                      {sub}
+                    </button>
+                  );
+                })}
+              </div>
             </Field>
 
             <Field label="Teacher (Optional)">
@@ -1075,7 +1352,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       </Modal>
 
       {/* Bottom Mobile Tab Bar (Mobile only, hidden on desktop) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 border-t border-slate-200/90 backdrop-blur-lg px-3 py-2 flex items-center justify-around max-w-md mx-auto shadow-md">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[var(--paper)] border-t border-[var(--rule)] px-3 py-2 flex items-center justify-around max-w-md mx-auto">
         {([
           { id: 'live', icon: Radio, label: 'Live' },
           { id: 'review', icon: CheckCircle2, label: 'Review', badge: unapprovedCount + failedQueueItems.length },
@@ -1090,14 +1367,14 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`relative flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition active:scale-95 ${
-                active ? 'text-cyan-600 font-bold' : 'text-slate-400 hover:text-slate-600'
+              className={`relative flex flex-col items-center gap-1 py-1 px-3 transition cursor-pointer font-mono ${
+                active ? 'text-[var(--ink)] font-bold' : 'text-[var(--stone)] hover:text-[var(--ink)]'
               }`}
             >
-              <Icon className="w-5 h-5" />
-              <span className="text-[10px]">{tab.label}</span>
+              <Icon className="w-4 h-4" />
+              <span className="text-[9px] uppercase tracking-wider">{tab.label}</span>
               {tab.badge ? (
-                <span className="absolute top-0 right-2 w-4 h-4 bg-amber-500 text-white font-bold text-[9px] rounded-full flex items-center justify-center shadow-xs">
+                <span className="absolute top-0 right-2 w-3.5 h-3.5 bg-[var(--ink)] text-[var(--cream)] font-bold text-[8px] flex items-center justify-center">
                   {tab.badge}
                 </span>
               ) : null}
@@ -1110,3 +1387,4 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 }
 
 export default App;
+

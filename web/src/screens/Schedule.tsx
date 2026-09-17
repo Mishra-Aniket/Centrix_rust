@@ -5,9 +5,12 @@ import {
   CalendarX2,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Plus,
+  Radio,
   RefreshCw,
   Undo2,
+  User,
 } from 'lucide-react';
 import { RoomSelector } from '../components/RoomSelector';
 import type { TimetableEntry, TimetableOverride, TimetableSummary } from '../types';
@@ -34,7 +37,7 @@ function formatDisplayDate(dateStr: string): string {
     const [year, month, day] = dateStr.split('-').map(Number);
     const date = new Date(year, month - 1, day);
     return date.toLocaleDateString('en-US', {
-      weekday: 'short',
+      weekday: 'long',
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -108,30 +111,6 @@ function getSlotTimingState(
   if (currentMinutes >= startMinutes && currentMinutes <= endMinutes) return 'live';
   if (currentMinutes < startMinutes) return 'upcoming';
   return 'completed';
-}
-
-function getSubjectTheme(subject: string) {
-  const s = (subject || '').toLowerCase();
-  if (s.includes('phy')) return {
-    badge: 'bg-sky-50 text-sky-700 border-sky-200',
-    avatar: 'bg-sky-100 text-sky-800',
-  };
-  if (s.includes('chem')) return {
-    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    avatar: 'bg-emerald-100 text-emerald-800',
-  };
-  if (s.includes('math')) return {
-    badge: 'bg-amber-50 text-amber-800 border-amber-200',
-    avatar: 'bg-amber-100 text-amber-800',
-  };
-  if (s.includes('bio') || s.includes('zool') || s.includes('bot')) return {
-    badge: 'bg-rose-50 text-rose-700 border-rose-200',
-    avatar: 'bg-rose-100 text-rose-800',
-  };
-  return {
-    badge: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    avatar: 'bg-indigo-100 text-indigo-800',
-  };
 }
 
 function getWeekDays(referenceDateStr: string) {
@@ -211,7 +190,7 @@ export function ScheduleScreen({
     }
   };
 
-  // Filter available dates that are within this week (never old past dates like Aug 31)
+  // Filter available dates that are within this week
   const currentWeekScheduledDates = useMemo(() => {
     const weekDateSet = new Set(weekDays.map((w) => w.dateStr));
     return availableDates.filter((d) => weekDateSet.has(d) && d !== selectedDate);
@@ -222,421 +201,428 @@ export function ScheduleScreen({
     return (
       currentWeekScheduledDates.find((d) => d > selectedDate) ||
       availableDates.find((d) => d >= todayStr && d !== selectedDate) ||
+      availableDates.find((d) => d !== selectedDate) ||
       currentWeekScheduledDates[0]
     );
   }, [currentWeekScheduledDates, availableDates, selectedDate, todayStr]);
 
   return (
-    <div className="space-y-4">
-      {/* Header with Title and Sync Action */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1">
+    <div className="space-y-6">
+      {/* Editorial Header */}
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-2 border-b border-[var(--rule)]">
         <div>
-          <h2 className="text-base font-bold text-slate-900">Class Timetable</h2>
-          <p className="text-xs text-slate-500">
+          <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-[var(--stone)] mb-1">
+            <span>TIMETABLE ARCHIVE</span>
+            <span>·</span>
+            <span>CENTRIX ACADEMIC CALENDAR</span>
+          </div>
+          <h1 className="font-serif text-2xl sm:text-3xl font-normal text-[var(--ink)] tracking-tight">
+            Class Timetable
+          </h1>
+          <p className="text-xs font-mono text-[var(--stone)] mt-1">
             {timetableSummary?.totalRooms
-              ? `Full week · ${timetableSummary.totalRooms} rooms · ${timetableSummary.totalLectures} lectures across center`
-              : `${timetable.length} lecture${timetable.length !== 1 ? 's' : ''} on ${formatDisplayDate(selectedDate)}`}
+              ? `${timetableSummary.totalRooms} classrooms · ${timetableSummary.totalLectures} scheduled sessions center-wide`
+              : `${timetable.length} session${timetable.length !== 1 ? 's' : ''} found on ${formatShortDate(selectedDate)}`}
           </p>
         </div>
-        {onSyncNow && (
-          <button
-            onClick={handleSyncClick}
-            disabled={busy || syncing}
-            title="Sync latest timetable from Google Sheet"
-            className="self-start sm:self-auto flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 active:scale-95 transition disabled:opacity-40 shadow-xs"
-          >
-            <RefreshCw className={`w-4 h-4 text-cyan-600 ${syncing ? 'animate-spin' : ''}`} />
-            <span>{syncing ? 'Syncing...' : 'Sync Sheet'}</span>
-          </button>
-        )}
-      </div>
 
-      {/* Responsive Grid: Controls on Left, Timetable on Right on Desktop */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Calendar Strip, Room Picker & Actions */}
-        <div className="lg:col-span-5 xl:col-span-4 space-y-4 lg:sticky lg:top-20">
-          {/* Date Navigator Bar with Native Date Picker */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-3 shadow-xs space-y-2.5">
-            <div className="flex items-center justify-between gap-2">
-              {/* Previous Day */}
-              <button
-                onClick={() => navigateDay(-1)}
-                disabled={busy}
-                title="Previous Day"
-                className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 active:scale-95 border border-slate-200/80 text-slate-700 transition disabled:opacity-40 shrink-0"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-
-              {/* Date Display (Tap to open Native Calendar) */}
-              <label className="relative flex-1 flex items-center justify-center gap-2 py-1.5 px-3 rounded-xl hover:bg-slate-50 cursor-pointer transition select-none">
-                <CalendarDays className="w-4 h-4 text-cyan-600 shrink-0" />
-                <div className="text-center min-w-0">
-                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                    <span className="text-xs font-bold text-slate-900 truncate">
-                      {formatDisplayDate(selectedDate)}
-                    </span>
-                    {isToday && (
-                      <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase rounded-md bg-cyan-100 text-cyan-700 tracking-wider">
-                        Today
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-medium block">
-                    Tap anywhere to pick date 📅
-                  </span>
-                </div>
-
-                {/* Hidden native date input that covers the container */}
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => e.target.value && onSelectDate(e.target.value)}
-                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                />
-              </label>
-
-              {/* Next Day */}
-              <button
-                onClick={() => navigateDay(1)}
-                disabled={busy}
-                title="Next Day"
-                className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 active:scale-95 border border-slate-200/80 text-slate-700 transition disabled:opacity-40 shrink-0"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* 7-Day Week Strip */}
-            <div className="grid grid-cols-7 gap-1 pt-1.5 border-t border-slate-100">
-              {weekDays.map((day) => {
-                const isSelected = day.dateStr === selectedDate;
-                const dayCount = timetableSummary?.dayCounts[day.dateStr];
-                const hasSlots = availableDates.includes(day.dateStr) || (dayCount !== undefined && dayCount > 0);
-
-                return (
-                  <button
-                    key={day.dateStr}
-                    onClick={() => onSelectDate(day.dateStr)}
-                    className={`py-2 px-1 rounded-xl text-center transition active:scale-95 flex flex-col items-center justify-center relative ${
-                      isSelected
-                        ? 'bg-cyan-600 text-white shadow-xs'
-                        : day.isToday
-                        ? 'bg-cyan-50 text-cyan-800 border border-cyan-200'
-                        : 'bg-slate-50 hover:bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    <span className="text-[10px] font-medium leading-none opacity-80">
-                      {day.dayName}
-                    </span>
-                    <span className={`text-xs font-bold mt-1 leading-none ${isSelected ? 'text-white' : 'text-slate-800'}`}>
-                      {day.dayNum}
-                    </span>
-
-                    {/* Count badge or dot indicator */}
-                    {dayCount !== undefined && dayCount > 0 ? (
-                      <span
-                        className={`text-[9px] font-mono px-1 rounded-full mt-1 ${
-                          isSelected ? 'bg-cyan-700 text-white' : 'bg-cyan-100 text-cyan-800'
-                        }`}
-                      >
-                        {dayCount}
-                      </span>
-                    ) : hasSlots ? (
-                      <span
-                        className={`w-1 h-1 rounded-full mt-1.5 ${
-                          isSelected ? 'bg-white' : 'bg-cyan-500'
-                        }`}
-                      />
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Quick Date Presets & Active Days in this Week */}
-            <div className="flex items-center gap-1.5 pt-1 overflow-x-auto no-scrollbar">
-              <button
-                onClick={() => onSelectDate(todayStr)}
-                className={`px-3 py-1.5 text-[11px] font-semibold rounded-lg transition active:scale-95 shrink-0 ${
-                  isToday
-                    ? 'bg-cyan-600 text-white shadow-xs'
-                    : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-700'
-                }`}
-              >
-                Go to Today
-              </button>
-
-              {/* Jump pills to active days in this week only */}
-              {currentWeekScheduledDates.map((dateStr) => {
-                const count = timetableSummary?.dayCounts[dateStr];
-                return (
-                  <button
-                    key={dateStr}
-                    onClick={() => onSelectDate(dateStr)}
-                    className="px-2.5 py-1.5 text-[11px] font-medium rounded-lg bg-slate-100 hover:bg-slate-200/80 text-slate-700 transition active:scale-95 shrink-0 flex items-center gap-1.5"
-                  >
-                    <Calendar className="w-3 h-3 text-slate-400" />
-                    <span>{formatShortDate(dateStr)}</span>
-                    {count !== undefined && count > 0 && (
-                      <span className="text-[9px] px-1.5 rounded-full bg-slate-200 text-slate-700 font-mono">
-                        {count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Room Selector Dropdown */}
-          <RoomSelector
-            rooms={rooms}
-            selectedRoom={selectedRoom}
-            onSelectRoom={onSelectRoom}
-            roomCounts={timetableSummary?.roomCounts}
-            totalCount={timetableSummary?.totalLectures ?? timetable.length}
-          />
-
-          {/* Add Extra Slot Button */}
+        {/* Top Actions */}
+        <div className="flex items-center gap-2.5 flex-wrap">
           <button
             onClick={onOpenAddSlot}
-            className="w-full py-3 px-4 rounded-xl bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-700 text-xs font-semibold flex items-center justify-center gap-2 active:scale-95 transition shadow-xs"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-mono uppercase tracking-wider bg-[var(--ink)] text-[var(--cream)] hover:opacity-90 active:scale-[0.99] transition cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
-            Add Extra Slot for {formatShortDate(selectedDate)}
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Slot</span>
           </button>
 
-          {/* Overrides for this Date */}
-          {overrides.length > 0 && (
-            <div className="space-y-1.5">
-              <h3 className="text-[10px] font-bold uppercase tracking-wider text-amber-700 px-1 flex items-center gap-1.5">
-                <CalendarX2 className="w-3.5 h-3.5" />
-                Overrides on {formatShortDate(selectedDate)} ({overrides.length})
-              </h3>
-              {overrides.map((override) => (
-                <div
-                  key={override.overrideId}
-                  className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between gap-2 shadow-xs"
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-amber-900">
-                      {override.overrideType === 'Cancelled'
-                        ? 'Slot Cancelled'
-                        : `Override: ${override.overrideType}`}
-                      {override.originalSlotId && (
-                        <span className="text-amber-700 font-mono text-[10px]">
-                          {' '}
-                          · {override.originalSlotId}
-                        </span>
-                      )}
-                    </p>
-                    {override.newBatchId && (
-                      <p className="text-[11px] text-amber-800">
-                        → {override.newBatchId} / {override.newSubjectId}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => onUndoOverride(override.overrideId)}
-                    disabled={busy}
-                    className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 active:scale-95 transition disabled:opacity-40 shrink-0 shadow-xs"
-                  >
-                    <Undo2 className="w-3 h-3" /> Undo
-                  </button>
-                </div>
-              ))}
-            </div>
+          {onSyncNow && (
+            <button
+              onClick={handleSyncClick}
+              disabled={busy || syncing}
+              title="Sync latest timetable from Google Sheet"
+              className="flex items-center gap-2 px-3.5 py-2 text-xs font-mono uppercase tracking-wider bg-[var(--paper)] text-[var(--ink)] border border-[var(--rule)] hover:bg-[var(--cream)] active:opacity-90 transition disabled:opacity-40 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-[var(--ink)]' : 'text-[var(--stone)]'}`} />
+              <span>{syncing ? 'Syncing...' : 'Sync Sheet'}</span>
+            </button>
           )}
         </div>
+      </div>
 
-        {/* Right Column: Timetable List / Empty State */}
-        <div className="lg:col-span-7 xl:col-span-8 space-y-4">
-          {/* Day & Room Active Header on Desktop */}
-          <div className="hidden lg:flex items-center justify-between bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-cyan-50 border border-cyan-100 flex items-center justify-center text-cyan-700 font-bold text-sm">
-                {selectedRoom === 'ALL' ? 'ALL' : `R${selectedRoom}`}
+      {/* Full-Width Architectural Calendar Block */}
+      <div className="bg-[var(--paper)] border border-[var(--rule)] p-4 sm:p-6 space-y-4">
+        {/* Top Control Strip: Navigator & Room Selector */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[var(--rule)]">
+          {/* Date Navigator Controls */}
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            {/* Prev Day */}
+            <button
+              onClick={() => navigateDay(-1)}
+              disabled={busy}
+              title="Previous Day"
+              className="p-2 border border-[var(--rule)] bg-[var(--cream)] hover:bg-[var(--paper)] text-[var(--ink)] transition disabled:opacity-40 cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            {/* Date Picker Label / Native Input */}
+            <label className="relative flex items-center gap-2.5 px-3.5 py-2 border border-[var(--rule)] bg-[var(--cream)] hover:bg-[var(--paper)] cursor-pointer transition select-none">
+              <CalendarDays className="w-4 h-4 text-[var(--stone)] shrink-0" />
+              <div className="text-left min-w-0">
+                <span className="text-xs font-serif text-[var(--ink)] font-normal block whitespace-nowrap">
+                  {formatDisplayDate(selectedDate)}
+                </span>
+                <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--stone)] block">
+                  Click to select date
+                </span>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">
-                  {selectedRoom === 'ALL' ? 'All Classrooms' : `Classroom Room ${selectedRoom}`}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Schedule for {formatDisplayDate(selectedDate)}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs font-mono">
-                {timetable.length} {timetable.length === 1 ? 'lecture' : 'lectures'}
-              </span>
-            </div>
-          </div>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => e.target.value && onSelectDate(e.target.value)}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+              />
+            </label>
 
-          {/* Slots Timeline List */}
-          <div className="space-y-3">
-            {timetable.length === 0 ? (
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-8 sm:p-12 text-center shadow-xs space-y-4">
-                <div className="w-14 h-14 rounded-2xl bg-cyan-50 border border-cyan-100 flex items-center justify-center mx-auto text-cyan-600">
-                  <Calendar className="w-7 h-7" />
-                </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-slate-900">
-                    No classes scheduled for {formatDisplayDate(selectedDate)}
-                  </h4>
-                  <p className="text-xs text-slate-500 max-w-md mx-auto">
-                    Room {selectedRoom} has no timetable entries on this date.
-                  </p>
-                </div>
+            {/* Next Day */}
+            <button
+              onClick={() => navigateDay(1)}
+              disabled={busy}
+              title="Next Day"
+              className="p-2 border border-[var(--rule)] bg-[var(--cream)] hover:bg-[var(--paper)] text-[var(--ink)] transition disabled:opacity-40 cursor-pointer"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
 
-                {/* Quick jump to active classes this week */}
-                {nextActiveDay && (
-                  <div className="pt-2">
-                    <button
-                      onClick={() => onSelectDate(nextActiveDay)}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-semibold shadow-xs transition active:scale-95"
-                    >
-                      <span>View Next Class: {formatDisplayDate(nextActiveDay)}</span>
-                      {timetableSummary?.dayCounts[nextActiveDay] && (
-                        <span className="px-2 py-0.5 rounded-full bg-cyan-700 text-[10px]">
-                          {timetableSummary.dayCounts[nextActiveDay]} slots
-                        </span>
-                      )}
-                    </button>
-                  </div>
-                )}
-
-                {currentWeekScheduledDates.length > 0 && (
-                  <div className="pt-4 border-t border-slate-100">
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-3">
-                      Other scheduled days this week:
-                    </p>
-                    <div className="flex items-center justify-center gap-2 flex-wrap">
-                      {currentWeekScheduledDates.map((d) => {
-                        const count = timetableSummary?.dayCounts[d];
-                        return (
-                          <button
-                            key={d}
-                            onClick={() => onSelectDate(d)}
-                            className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-cyan-50 border border-slate-200 hover:border-cyan-200 text-slate-700 hover:text-cyan-800 text-xs font-medium transition active:scale-95 flex items-center gap-2"
-                          >
-                            <span>{formatDisplayDate(d)}</span>
-                            {count !== undefined && count > 0 && (
-                              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-100 text-cyan-800 font-mono font-bold">
-                                {count}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3.5">
-                {timetable.map((slot) => {
-                  const timingState = getSlotTimingState(
-                    selectedDate,
-                    slot.slotStartTime,
-                    slot.slotEndTime
-                  );
-                  const duration = getDurationMinutes(slot.slotStartTime, slot.slotEndTime);
-                  const theme = getSubjectTheme(slot.subjectId);
-
-                  return (
-                    <div
-                      key={slot.timetableEntryId}
-                      className={`bg-white border rounded-2xl p-4 flex items-start justify-between gap-3 transition-all duration-200 ${
-                        timingState === 'live'
-                          ? 'border-emerald-300 ring-2 ring-emerald-400/30 bg-emerald-50/20 shadow-md'
-                          : 'border-slate-200/90 hover:border-slate-300 hover:shadow-xs shadow-2xs'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3.5 min-w-0">
-                        {/* Time box */}
-                        <div className={`px-3 py-2 rounded-xl text-center shrink-0 min-w-[76px] border ${
-                          timingState === 'live'
-                            ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
-                            : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <span className="text-xs font-bold text-slate-800 block font-mono">
-                            {formatTime12h(slot.slotStartTime)}
-                          </span>
-                          <span className="text-[9px] text-slate-400 block font-medium">to</span>
-                          <span className="text-xs font-bold text-cyan-700 block font-mono">
-                            {formatTime12h(slot.slotEndTime)}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
-                            {duration}m
-                          </span>
-                        </div>
-
-                        {/* Slot Details */}
-                        <div className="min-w-0 space-y-1.5">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="text-xs font-bold text-slate-900 truncate tracking-tight">
-                              {slot.batchId}
-                            </h4>
-                            {timingState === 'live' && (
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-100 text-emerald-800 animate-pulse border border-emerald-200">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                LIVE NOW
-                              </span>
-                            )}
-                            {timingState === 'upcoming' && isToday && (
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                                Upcoming
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {/* Subject Badge */}
-                            <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${theme.badge}`}>
-                              {slot.subjectId}
-                            </span>
-                            {/* Teacher with avatar circle */}
-                            {slot.teacherId && (
-                              <span className="text-xs text-slate-700 flex items-center gap-1.5">
-                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${theme.avatar}`}>
-                                  {slot.teacherId.slice(0, 2).toUpperCase()}
-                                </span>
-                                <span className="font-semibold text-slate-700">{slot.teacherId}</span>
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono pt-0.5">
-                            <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200/80">Room {slot.roomId}</span>
-                            <span>•</span>
-                            <span className="truncate">{slot.slotId}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Cancel action button */}
-                      <button
-                        onClick={() => onCancelSlot(slot)}
-                        disabled={busy}
-                        title="Cancel this slot for this date"
-                        className="p-2.5 rounded-xl bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-slate-400 hover:text-rose-600 active:scale-95 transition disabled:opacity-40 shrink-0 shadow-2xs"
-                      >
-                        <CalendarX2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+            {/* Today Jump */}
+            {!isToday && (
+              <button
+                onClick={() => onSelectDate(todayStr)}
+                className="px-3 py-2 text-xs font-mono uppercase tracking-wider border border-[var(--rule)] bg-[var(--cream)] hover:bg-[var(--paper)] text-[var(--ink)] transition cursor-pointer"
+              >
+                Jump to Today
+              </button>
             )}
           </div>
 
-          {/* Info Footnote */}
-          <p className="text-xs text-slate-500 px-1 flex items-center gap-2">
-            <Calendar className="w-4 h-4 shrink-0 text-slate-400" />
-            Cancelling creates an override for {formatShortDate(selectedDate)} only — master timetable stays untouched.
-          </p>
+          {/* Quick Room Filter */}
+          <div className="flex items-center gap-2.5">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--stone)] shrink-0">
+              Filter:
+            </span>
+            <div className="w-full sm:w-auto min-w-[220px]">
+              <RoomSelector
+                rooms={rooms}
+                selectedRoom={selectedRoom}
+                onSelectRoom={onSelectRoom}
+                roomCounts={timetableSummary?.roomCounts}
+                totalCount={timetableSummary?.totalLectures ?? timetable.length}
+                label="Active Classroom"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 7-Day Horizontal Week Strip */}
+        <div className="grid grid-cols-7 gap-2 sm:gap-3">
+          {weekDays.map((day) => {
+            const isSelected = day.dateStr === selectedDate;
+            const dayCount = timetableSummary?.dayCounts[day.dateStr];
+            const hasSlots = availableDates.includes(day.dateStr) || (dayCount !== undefined && dayCount > 0);
+
+            return (
+              <button
+                key={day.dateStr}
+                onClick={() => onSelectDate(day.dateStr)}
+                className={`py-3 px-2 text-center transition cursor-pointer flex flex-col items-center justify-between min-h-[76px] border ${
+                  isSelected
+                    ? 'bg-[var(--ink)] text-[var(--cream)] border-[var(--ink)] shadow-sm ring-1 ring-[var(--ink)]'
+                    : day.isToday
+                    ? 'bg-[var(--cream)] border-[var(--ink)] text-[var(--ink)]'
+                    : 'bg-[var(--cream)] hover:bg-[var(--paper)] text-[var(--stone)] border-[var(--rule)] hover:border-[var(--stone)]'
+                }`}
+              >
+                {/* Day Header */}
+                <div className="flex items-center gap-1">
+                  <span className={`text-[10px] font-mono uppercase tracking-widest ${isSelected ? 'text-[var(--cream)] opacity-90' : 'text-[var(--stone)]'}`}>
+                    {day.dayName}
+                  </span>
+                  {day.isToday && (
+                    <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-[var(--cream)]' : 'bg-emerald-500'}`} />
+                  )}
+                </div>
+
+                {/* Day Number */}
+                <span className={`text-base sm:text-lg font-serif leading-none my-1 ${isSelected ? 'text-[var(--cream)] font-bold' : 'text-[var(--ink)]'}`}>
+                  {day.dayNum}
+                </span>
+
+                {/* Day Lecture Count Chip */}
+                {dayCount !== undefined && dayCount > 0 ? (
+                  <span
+                    className={`text-[9px] font-mono px-1.5 py-0.2 tracking-wider ${
+                      isSelected
+                        ? 'bg-[var(--cream)] text-[var(--ink)] font-bold'
+                        : 'border border-[var(--rule)] bg-[var(--paper)] text-[var(--stone)]'
+                    }`}
+                  >
+                    {dayCount} {dayCount === 1 ? 'class' : 'classes'}
+                  </span>
+                ) : hasSlots ? (
+                  <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-[var(--cream)]' : 'bg-[var(--stone)]'}`} />
+                ) : (
+                  <span className="text-[9px] font-mono text-[var(--stone)] opacity-40">—</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Quick Jump Bar for Scheduled Dates in this week */}
+        {currentWeekScheduledDates.length > 0 && (
+          <div className="pt-2 flex items-center gap-2 overflow-x-auto no-scrollbar text-[11px] font-mono">
+            <span className="text-[10px] uppercase tracking-wider text-[var(--stone)] shrink-0">
+              Active Dates This Week:
+            </span>
+            {currentWeekScheduledDates.map((dateStr) => {
+              const count = timetableSummary?.dayCounts[dateStr];
+              return (
+                <button
+                  key={dateStr}
+                  onClick={() => onSelectDate(dateStr)}
+                  className="px-2.5 py-1 uppercase tracking-wider bg-[var(--cream)] hover:bg-[var(--paper)] border border-[var(--rule)] text-[var(--stone)] hover:text-[var(--ink)] transition cursor-pointer shrink-0 flex items-center gap-1.5"
+                >
+                  <Calendar className="w-3 h-3 text-[var(--stone)]" />
+                  <span>{formatShortDate(dateStr)}</span>
+                  {count !== undefined && count > 0 && (
+                    <span className="text-[9px] px-1 border border-[var(--rule)] bg-[var(--paper)] text-[var(--stone)]">
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Overrides for this Date (if any) */}
+      {overrides.length > 0 && (
+        <div className="bg-[var(--paper)] border border-amber-800/40 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-mono text-xs uppercase tracking-wider text-amber-500 flex items-center gap-2">
+              <CalendarX2 className="w-4 h-4" />
+              <span>Active Overrides for {formatShortDate(selectedDate)} ({overrides.length})</span>
+            </h3>
+            <span className="text-[10px] font-mono text-[var(--stone)]">
+              Overrides apply to this date only
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            {overrides.map((override) => (
+              <div
+                key={override.overrideId}
+                className="bg-[var(--cream)] border border-[var(--rule)] p-3 flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0 font-mono">
+                  <p className="text-xs font-serif text-[var(--ink)]">
+                    {override.overrideType === 'Cancelled'
+                      ? 'Slot Cancelled'
+                      : `Override: ${override.overrideType}`}
+                    {override.originalSlotId && (
+                      <span className="text-[var(--stone)] text-[10px]">
+                        {' '}· {override.originalSlotId}
+                      </span>
+                    )}
+                  </p>
+                  {override.newBatchId && (
+                    <p className="text-[11px] text-[var(--stone)]">
+                      → {override.newBatchId} / {override.newSubjectId}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => onUndoOverride(override.overrideId)}
+                  disabled={busy}
+                  className="flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider px-2.5 py-1.5 border border-[var(--rule)] bg-[var(--paper)] text-[var(--ink)] hover:bg-[var(--cream)] transition disabled:opacity-40 shrink-0 cursor-pointer"
+                >
+                  <Undo2 className="w-3 h-3" />
+                  <span>Undo</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Timetable List Section */}
+      <div className="space-y-4">
+        {/* Section Header */}
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <h2 className="font-serif text-lg font-normal text-[var(--ink)]">
+              Scheduled Lectures
+            </h2>
+            <span className="px-2 py-0.5 border border-[var(--rule)] bg-[var(--cream)] text-[var(--ink)] text-[10px] font-mono uppercase tracking-wider">
+              {timetable.length} {timetable.length === 1 ? 'lecture' : 'lectures'}
+            </span>
+          </div>
+
+          <span className="text-xs font-mono text-[var(--stone)]">
+            {selectedRoom === 'ALL' ? 'Showing All Classrooms' : `Room ${selectedRoom}`}
+          </span>
+        </div>
+
+        {/* Timetable Cards or Empty State */}
+        {timetable.length === 0 ? (
+          <div className="bg-[var(--paper)] border border-[var(--rule)] p-12 text-center space-y-4">
+            <div className="w-12 h-12 border border-[var(--rule)] bg-[var(--cream)] flex items-center justify-center mx-auto text-[var(--stone)]">
+              <Calendar className="w-6 h-6" />
+            </div>
+            <div className="space-y-1.5 max-w-md mx-auto">
+              <h3 className="font-serif text-lg font-normal text-[var(--ink)]">
+                No Classes Scheduled
+              </h3>
+              <p className="text-xs font-mono text-[var(--stone)] leading-relaxed">
+                {selectedRoom === 'ALL'
+                  ? `No lectures found across any classroom for ${formatDisplayDate(selectedDate)}.`
+                  : `Room ${selectedRoom} has no timetable entries on ${formatDisplayDate(selectedDate)}.`}
+              </p>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex items-center justify-center gap-3 pt-2 flex-wrap">
+              {nextActiveDay && (
+                <button
+                  onClick={() => onSelectDate(nextActiveDay)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--ink)] hover:opacity-90 text-[var(--cream)] font-mono text-xs uppercase tracking-wider transition cursor-pointer"
+                >
+                  <span>Go to Next Class: {formatShortDate(nextActiveDay)} →</span>
+                  {timetableSummary?.dayCounts[nextActiveDay] && (
+                    <span className="px-1.5 py-0.2 border border-[var(--rule)] bg-[var(--cream)] text-[var(--ink)] text-[10px]">
+                      {timetableSummary.dayCounts[nextActiveDay]}
+                    </span>
+                  )}
+                </button>
+              )}
+              <button
+                onClick={onOpenAddSlot}
+                className="inline-flex items-center gap-2 px-4 py-2 border border-[var(--rule)] bg-[var(--cream)] hover:bg-[var(--paper)] text-[var(--ink)] font-mono text-xs uppercase tracking-wider transition cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Extra Slot</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4">
+            {timetable.map((slot) => {
+              const timingState = getSlotTimingState(
+                selectedDate,
+                slot.slotStartTime,
+                slot.slotEndTime
+              );
+              const duration = getDurationMinutes(slot.slotStartTime, slot.slotEndTime);
+
+              return (
+                <div
+                  key={slot.timetableEntryId}
+                  className={`bg-[var(--paper)] border p-5 flex flex-col justify-between transition-all ${
+                    timingState === 'live'
+                      ? 'border-[var(--ink)] ring-2 ring-[var(--ink)]'
+                      : 'border-[var(--rule)] hover:border-[var(--ink)]'
+                  }`}
+                >
+                  {/* Card Header: Timing + Status */}
+                  <div className="flex items-center justify-between pb-3 border-b border-[var(--rule)]">
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 text-xs font-mono font-medium text-[var(--ink)]">
+                        <Clock className="w-3.5 h-3.5 text-[var(--stone)]" />
+                        <span>{formatTime12h(slot.slotStartTime)} — {formatTime12h(slot.slotEndTime)}</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-[var(--stone)] px-1.5 py-0.2 border border-[var(--rule)] bg-[var(--cream)]">
+                        {duration}m
+                      </span>
+                    </div>
+
+                    {timingState === 'live' ? (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-mono uppercase bg-emerald-950/20 text-emerald-500 border border-emerald-700/40">
+                        <Radio className="w-3 h-3 animate-pulse" />
+                        LIVE NOW
+                      </span>
+                    ) : timingState === 'upcoming' && isToday ? (
+                      <span className="px-2 py-0.5 text-[9px] font-mono uppercase bg-[var(--cream)] text-[var(--stone)] border border-[var(--rule)]">
+                        Upcoming
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-mono text-[var(--stone)]">
+                        Room {slot.roomId}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Card Body: Batch, Subject, Faculty */}
+                  <div className="py-4 space-y-2.5">
+                    <div>
+                      <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--stone)] block mb-0.5">
+                        Batch
+                      </span>
+                      <h3 className="font-serif text-xl font-normal text-[var(--ink)] tracking-tight">
+                        {slot.batchId}
+                      </h3>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap pt-1">
+                      {/* Subject Badge */}
+                      <span className="px-2.5 py-1 text-xs font-mono uppercase tracking-wider border border-[var(--rule)] bg-[var(--cream)] text-[var(--ink)]">
+                        {slot.subjectId}
+                      </span>
+
+                      {/* Faculty */}
+                      {slot.teacherId && (
+                        <span className="text-xs font-mono text-[var(--stone)] flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-[var(--stone)]" />
+                          <span className="text-[var(--ink)] font-serif">{slot.teacherId}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card Footer: Metadata & Override Action */}
+                  <div className="pt-3 border-t border-[var(--rule)] flex items-center justify-between text-[10px] font-mono text-[var(--stone)]">
+                    <div className="flex items-center gap-2">
+                      <span className="px-1.5 py-0.2 border border-[var(--rule)] bg-[var(--cream)] text-[var(--ink)] font-bold">
+                        R{slot.roomId}
+                      </span>
+                      <span className="truncate max-w-[120px]" title={slot.slotId}>
+                        {slot.slotId}
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => onCancelSlot(slot)}
+                      disabled={busy}
+                      title="Cancel this slot for this date"
+                      className="flex items-center gap-1 px-2 py-1 border border-[var(--rule)] bg-[var(--cream)] hover:bg-red-950/20 text-[var(--stone)] hover:text-red-500 hover:border-red-700/40 transition disabled:opacity-40 cursor-pointer"
+                    >
+                      <CalendarX2 className="w-3 h-3" />
+                      <span>Cancel Slot</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Schedule Footnote */}
+        <div className="p-3 border border-[var(--rule)] bg-[var(--cream)] flex items-center justify-between text-xs font-mono text-[var(--stone)]">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-3.5 h-3.5 shrink-0 text-[var(--stone)]" />
+            <span>Master Timetable is synced with Center Google Sheets. Cancelling an entry creates a local override for {formatShortDate(selectedDate)} only.</span>
+          </div>
         </div>
       </div>
     </div>

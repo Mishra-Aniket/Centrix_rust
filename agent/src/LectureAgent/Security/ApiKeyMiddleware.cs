@@ -26,21 +26,36 @@ public sealed class ApiKeyMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        // Default to true: auth is enabled unless explicitly disabled in config.
-        // Previously defaulted to false, leaving the entire API open on the LAN.
-        if (!_configuration.GetValue("Auth:Enabled", true))
-        {
-            context.Items[AuthModeItem] = "key";
-            await _next(context);
-            return;
-        }
-
         if (IsPublicPath(context.Request.Path))
         {
             await _next(context);
             return;
         }
 
+        var authEnabled = _configuration.GetValue("Auth:Enabled", true);
+        var requireLocalAuth = _configuration.GetValue("Auth:RequireAuthForLocalhost", false);
+        var isLoopback = context.Connection.RemoteIpAddress != null && System.Net.IPAddress.IsLoopback(context.Connection.RemoteIpAddress);
+
+        // Zone 1: Localhost / Loopback (Tauri Desktop App running on the recording PC)
+        // Frictionless access without manual key configuration or login, unless explicitly forced.
+        if (isLoopback && !requireLocalAuth)
+        {
+            context.Items[AuthModeItem] = "local";
+            await _next(context);
+            return;
+        }
+
+        // When auth is explicitly disabled in config, allow non-remote calls,
+        // BUT if it's an external remote LAN caller, still protect port 5200 from unauthorized network tamper.
+        if (!authEnabled && !IsRemoteLanRequest(context))
+        {
+            context.Items[AuthModeItem] = "key";
+            await _next(context);
+            return;
+        }
+
+        // Zone 2: Remote LAN / Center Wi-Fi or when Auth:Enabled is true
+        // Check API Key or Session
         var configuredKey = _configuration["Auth:ApiKey"];
         var suppliedKey = context.Request.Headers["X-Agent-Key"].FirstOrDefault();
 
@@ -95,6 +110,21 @@ public sealed class ApiKeyMiddleware
         || path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase)
         || path.StartsWithSegments("/api/auth/config", StringComparison.OrdinalIgnoreCase)
         || path.StartsWithSegments("/api/auth/google", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsRemoteLanRequest(HttpContext context)
+    {
+        var remoteIp = context.Connection.RemoteIpAddress;
+        if (remoteIp == null)
+            return false;
+
+        if (System.Net.IPAddress.IsLoopback(remoteIp))
+            return false;
+
+        if (context.Connection.LocalIpAddress != null && remoteIp.Equals(context.Connection.LocalIpAddress))
+            return false;
+
+        return true;
+    }
 
     private static bool CryptographicEquals(string expected, string supplied)
     {

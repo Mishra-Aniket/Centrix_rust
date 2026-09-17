@@ -34,6 +34,19 @@ export interface LectureSession {
   reviewStatus: string;
   reviewerId?: string;
   matchingReason?: string;
+  matchStatus?: string;
+  failureCode?: string;
+  failureReason?: string;
+  matchedAt?: string;
+  matchAttempts?: number;
+  youTubeId?: string;
+  youTubePublishStatus?: string;
+  youTubeThumbnailUrl?: string;
+  youTubeFailureReason?: string;
+  youTubePublishedAt?: string;
+  qcStatus?: string;
+  qcResults?: string;
+  qcPassedAt?: string;
   driveFolderPath?: string;
   driveVideoFileId?: string;
   pdfFilePath?: string;
@@ -41,6 +54,45 @@ export interface LectureSession {
   drivePdfFileId?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface LectureSummary {
+  total: number;
+  uploaded: number;
+  matched: number;
+  unmatched: number;
+  failedUpload: number;
+  pendingReview: number;
+  uploadedPercentage: number;
+  matchedPercentage: number;
+}
+
+export interface ActionResponse<T> {
+  success: boolean;
+  message: string;
+  data?: T;
+}
+
+export interface QcCheckResult {
+  name: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface QcReport {
+  status: string;
+  checkedAt: string;
+  checks: QcCheckResult[];
+}
+
+export interface AuditEntry {
+  auditEntryId: string;
+  entityType: string;
+  entityId: string;
+  actionType: string;
+  userId?: string | null;
+  changeSummary?: string | null;
+  createdAt: string;
 }
 
 export interface QueueEntry {
@@ -130,6 +182,7 @@ export interface AgentInfo {
   uploadsPaused: boolean;
   monitoringPaused: boolean;
   timetableSyncPaused: boolean;
+  youTubeEnabled?: boolean;
 }
 
 export interface ControlState {
@@ -232,3 +285,15 @@ export interface StudioStatus {
   reason?: string;
   baseUrl?: string;
 }
+
+export const STANDARD_SUBJECTS = [
+  'Physics',
+  'Chemistry',
+  'Maths',
+  'Botany',
+  'Zoology',
+  'Biology',
+  'SST',
+  'English',
+] as const;
+

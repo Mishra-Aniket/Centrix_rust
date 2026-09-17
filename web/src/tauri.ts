@@ -314,23 +314,7 @@ export async function getBandwidthSettings(): Promise<BandwidthSettings> {
     };
   }
   try {
-    const res = await invoke<{
-      max_upload_speed_mbps: number;
-      off_peak_enabled: boolean;
-      off_peak_start: string;
-      off_peak_end: string;
-      pause_during_class_hours: boolean;
-      current_status?: string | null;
-    }>('get_bandwidth_settings');
-
-    return {
-      maxUploadSpeedMbps: res.max_upload_speed_mbps,
-      offPeakEnabled: res.off_peak_enabled,
-      offPeakStart: res.off_peak_start,
-      offPeakEnd: res.off_peak_end,
-      pauseDuringClassHours: res.pause_during_class_hours,
-      currentStatus: res.current_status
-    };
+    return await invoke<BandwidthSettings>('get_bandwidth_settings');
   } catch {
     return {
       maxUploadSpeedMbps: 0,
@@ -345,15 +329,6 @@ export async function getBandwidthSettings(): Promise<BandwidthSettings> {
 
 export async function saveBandwidthSettings(settings: BandwidthSettings): Promise<void> {
   if (!isTauri()) return;
-  return invoke('save_bandwidth_settings', {
-    settings: {
-      max_upload_speed_mbps: settings.maxUploadSpeedMbps,
-      off_peak_enabled: settings.offPeakEnabled,
-      off_peak_start: settings.offPeakStart,
-      off_peak_end: settings.offPeakEnd,
-      pause_during_class_hours: settings.pauseDuringClassHours,
-      current_status: settings.currentStatus ?? null,
-    }
-  });
+  return invoke('save_bandwidth_settings', { settings });
 }
 

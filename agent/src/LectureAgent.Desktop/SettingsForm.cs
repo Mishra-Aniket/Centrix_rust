@@ -9,20 +9,27 @@ namespace LectureAgent.Desktop;
 /// </summary>
 internal sealed class SettingsForm : Form
 {
-    private static readonly Color HeaderColor = Color.FromArgb(27, 16, 51);
-    private static readonly Color AccentColor = Color.FromArgb(134, 59, 255);
-    private static readonly Color MutedTextColor = Color.FromArgb(185, 174, 220);
-    private static readonly Color FieldBorder = Color.FromArgb(210, 204, 232);
-    private static readonly Color LabelColor = Color.FromArgb(51, 41, 82);
+    private static readonly Color HeaderColor = Color.FromArgb(20, 20, 19);
+    private static readonly Color CardColor = Color.FromArgb(28, 28, 26);
+    private static readonly Color BorderColor = Color.FromArgb(40, 40, 37);
+    private static readonly Color TextColor = Color.FromArgb(236, 232, 225);
+    private static readonly Color MutedTextColor = Color.FromArgb(142, 139, 133);
+    private static readonly Color CreamAccent = Color.FromArgb(237, 234, 229);
+    private static readonly Color DarkAccent = Color.FromArgb(20, 20, 19);
+    private static readonly Color FieldBorder = Color.FromArgb(50, 50, 46);
+    private static readonly Color LabelColor = Color.FromArgb(236, 232, 225);
 
     private readonly AgentSettings _settings;
 
     private readonly TextBox _folderBox = new();
+    private readonly TextBox _notesFolderBox = new();
     private readonly TextBox _centerBox = new();
     private readonly TextBox _roomBox = new();
     private readonly NumericUpDown _portBox = new() { Minimum = 1024, Maximum = 65535, Width = 120 };
     private readonly TextBox _keyBox = new() { ReadOnly = true };
     private readonly CheckBox _driveEnabled = new() { Text = "Upload to Google Drive", AutoSize = true };
+    private readonly CheckBox _youtubeEnabled = new() { Text = "Enable YouTube upload", AutoSize = true };
+    private readonly CheckBox _youtubeAutoPublish = new() { Text = "Auto-publish to YouTube after Drive upload", AutoSize = true };
     private readonly TextBox _rootFolderBox = new();
     private readonly TextBox _credentialsBox = new();
     private readonly Button _signInButton = new() { Text = "Sign in to Google now…", AutoSize = true };
@@ -38,17 +45,35 @@ internal sealed class SettingsForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(620, 640);
+        ClientSize = new Size(680, 720);
         Font = new Font("Segoe UI", 9F);
-        BackColor = Color.White;
+        BackColor = Color.FromArgb(20, 20, 19);
+        ForeColor = TextColor;
+
+        foreach (var tb in new[] { _folderBox, _notesFolderBox, _centerBox, _roomBox, _keyBox, _rootFolderBox, _credentialsBox })
+        {
+            tb.BackColor = Color.FromArgb(28, 28, 26);
+            tb.ForeColor = TextColor;
+            tb.BorderStyle = BorderStyle.FixedSingle;
+        }
+        _portBox.BackColor = Color.FromArgb(28, 28, 26);
+        _portBox.ForeColor = TextColor;
+        _driveEnabled.ForeColor = TextColor;
+        _youtubeEnabled.ForeColor = TextColor;
+        _youtubeAutoPublish.ForeColor = TextColor;
 
         _folderBox.Text = DefaultIfBlank(settings.MonitorFolder, Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments));
+        _notesFolderBox.Text = settings.NotesMonitorFolder;
         _centerBox.Text = settings.CenterId;
         _roomBox.Text = settings.RoomId;
         _portBox.Value = Math.Clamp(settings.Port, 1024, 65535);
         _keyBox.Text = settings.ApiKey.Length > 0 ? settings.ApiKey : AgentSettings.GenerateApiKey();
         _driveEnabled.Checked = settings.GoogleDriveEnabled;
-        _rootFolderBox.Text = DefaultIfBlank(settings.GoogleDriveRootFolder, "LectureRecordings");
+        _youtubeEnabled.Checked = settings.YouTubeEnabled;
+        _youtubeAutoPublish.Checked = settings.YouTubeAutoPublish;
+        _youtubeAutoPublish.Enabled = settings.YouTubeEnabled;
+        _youtubeEnabled.CheckedChanged += (_, _) => _youtubeAutoPublish.Enabled = _youtubeEnabled.Checked;
+        _rootFolderBox.Text = DefaultIfBlank(settings.GoogleDriveRootFolder, "");
         _credentialsBox.Text = settings.GoogleDriveCredentialsPath;
 
         AcceptButton = MakeButton("Save", SaveAndClose, accent: true);
@@ -80,14 +105,17 @@ internal sealed class SettingsForm : Form
         var body = new TableLayoutPanel
         {
             AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
-            Dock = DockStyle.Fill,
-            Padding = new Padding(24, 18, 24, 12)
+            Dock = DockStyle.Top,
+            Padding = new Padding(24, 18, 24, 20)
         };
 
         body.Controls.Add(MakeHeading("This PC"));
         body.Controls.Add(MakeRow("Recordings folder", FolderPicker()));
         body.Controls.Add(MakeNote("Videos and notes are detected here, including subfolders. Only files from the last 24 hours are picked up."));
+        body.Controls.Add(MakeRow("Notes / PDF folder (optional)", NotesFolderPicker()));
+        body.Controls.Add(MakeNote("Leave blank to keep notes in the recordings folder. Any folder on any drive works — type or browse a full path (e.g. D:\\Notes or \\\\NAS\\share)."));
         body.Controls.Add(MakeRow("Center name", _centerBox));
         body.Controls.Add(MakeRow("Room ID", _roomBox));
 
@@ -107,6 +135,11 @@ internal sealed class SettingsForm : Form
         body.Controls.Add(MakeRow("Credentials file", CredentialsPicker()));
         body.Controls.Add(MakeNote("The Google OAuth desktop JSON issued for the center's account."));
         body.Controls.Add(MakeRow(string.Empty, SignInRow()));
+
+        body.Controls.Add(MakeHeading("YouTube (Optional)"));
+        body.Controls.Add(_youtubeEnabled);
+        body.Controls.Add(_youtubeAutoPublish);
+        body.Controls.Add(MakeNote("Optionally upload lectures to YouTube after processing. Keep disabled if YouTube upload is not needed."));
 
         return body;
     }
@@ -142,24 +175,24 @@ internal sealed class SettingsForm : Form
                     statusLabel.Text = "● Service is running.";
                     statusLabel.ForeColor = Color.FromArgb(16, 185, 129);
                     actionButton.Text = "Restart service";
-                    actionButton.BackColor = Color.FromArgb(238, 235, 248);
-                    actionButton.ForeColor = LabelColor;
+                    actionButton.BackColor = Color.FromArgb(35, 35, 32);
+                    actionButton.ForeColor = TextColor;
                     actionButton.Visible = true;
                     break;
                 case AgentServiceState.Stopped:
                     statusLabel.Text = "● Service is stopped.";
                     statusLabel.ForeColor = Color.FromArgb(239, 68, 68);
                     actionButton.Text = "Start service";
-                    actionButton.BackColor = AccentColor;
-                    actionButton.ForeColor = Color.White;
+                    actionButton.BackColor = CreamAccent;
+                    actionButton.ForeColor = DarkAccent;
                     actionButton.Visible = true;
                     break;
                 case AgentServiceState.NotInstalled:
                     statusLabel.Text = "● Service is not installed on this PC.";
                     statusLabel.ForeColor = Color.FromArgb(239, 68, 68);
                     actionButton.Text = "Install service (elevated)…";
-                    actionButton.BackColor = AccentColor;
-                    actionButton.ForeColor = Color.White;
+                    actionButton.BackColor = CreamAccent;
+                    actionButton.ForeColor = DarkAccent;
                     actionButton.Visible = true;
                     break;
                 default:
@@ -223,6 +256,35 @@ internal sealed class SettingsForm : Form
         return panel;
     }
 
+    private Control NotesFolderPicker()
+    {
+        _notesFolderBox.Dock = DockStyle.Fill;
+        var browse = MakeButton("Browse…", () =>
+        {
+            using var dialog = new FolderBrowserDialog
+            {
+                Description = "Select the folder where class notes (PDF, PPT) are saved, if they arrive in a different folder than the recordings.",
+                ShowNewFolderButton = true
+            };
+            if (Directory.Exists(_notesFolderBox.Text))
+            {
+                dialog.SelectedPath = _notesFolderBox.Text;
+            }
+
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                _notesFolderBox.Text = dialog.SelectedPath;
+            }
+        });
+
+        var panel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.Controls.Add(_notesFolderBox, 0, 0);
+        panel.Controls.Add(browse, 1, 0);
+        return panel;
+    }
+
     private Control KeyRow()
     {
         var copy = MakeButton("Copy", () =>
@@ -276,8 +338,9 @@ internal sealed class SettingsForm : Form
     private Control SignInRow()
     {
         _signInButton.FlatStyle = FlatStyle.Flat;
-        _signInButton.BackColor = AccentColor;
-        _signInButton.ForeColor = Color.White;
+        _signInButton.BackColor = CreamAccent;
+        _signInButton.ForeColor = DarkAccent;
+        _signInButton.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
         _signInButton.FlatAppearance.BorderSize = 0;
         _signInButton.UseVisualStyleBackColor = false;
         _signInButton.Click += async (_, _) => await SignInAsync();
@@ -358,13 +421,17 @@ internal sealed class SettingsForm : Form
 
     private void ApplyValues()
     {
-        _settings.MonitorFolder = _folderBox.Text.Trim();
+        // Quotes around a pasted path are never part of the folder name.
+        _settings.MonitorFolder = _folderBox.Text.Trim().Trim('"', '\'').Trim();
+        _settings.NotesMonitorFolder = _notesFolderBox.Text.Trim().Trim('"', '\'').Trim();
         _settings.CenterId = _centerBox.Text.Trim();
         _settings.RoomId = _roomBox.Text.Trim();
         _settings.Port = (int)_portBox.Value;
         _settings.ApiKey = _keyBox.Text;
         _settings.GoogleDriveEnabled = _driveEnabled.Checked;
         _settings.GoogleDriveRootFolder = _rootFolderBox.Text.Trim();
+        _settings.YouTubeEnabled = _youtubeEnabled.Checked;
+        _settings.YouTubeAutoPublish = _youtubeAutoPublish.Checked;
 
         if (_credentialsBox.Text.Trim().Length > 0)
         {
@@ -427,7 +494,7 @@ internal sealed class SettingsForm : Form
             FlowDirection = FlowDirection.RightToLeft,
             AutoSize = true,
             Padding = new Padding(12, 10, 24, 14),
-            BackColor = Color.FromArgb(246, 244, 251)
+            BackColor = Color.FromArgb(28, 28, 26)
         };
         row.Controls.Add(cancel);
         row.Controls.Add(save);
@@ -437,8 +504,8 @@ internal sealed class SettingsForm : Form
     private static Label MakeHeading(string text) => new()
     {
         Text = text,
-        Font = new Font("Segoe UI", 11F, FontStyle.Bold),
-        ForeColor = HeaderColor,
+        Font = new Font("Georgia", 11.5F, FontStyle.Regular),
+        ForeColor = TextColor,
         AutoSize = true,
         Margin = new Padding(0, 16, 0, 8)
     };
@@ -473,7 +540,7 @@ internal sealed class SettingsForm : Form
     {
         Text = text,
         AutoSize = true,
-        ForeColor = Color.FromArgb(120, 113, 145),
+        ForeColor = MutedTextColor,
         Font = new Font("Segoe UI", 8.25F),
         MaximumSize = new Size(560, 0),
         Margin = new Padding(1, 2, 0, 6)
@@ -486,22 +553,25 @@ internal sealed class SettingsForm : Form
             Text = text,
             AutoSize = true,
             FlatStyle = FlatStyle.Flat,
-            Padding = new Padding(14, 7, 14, 7),
+            Padding = new Padding(16, 7, 16, 7),
             Margin = new Padding(6, 0, 0, 0),
-            TabStop = true
+            TabStop = true,
+            Cursor = Cursors.Hand
         };
         button.FlatAppearance.BorderSize = 0;
         if (accent)
         {
-            button.BackColor = AccentColor;
-            button.ForeColor = Color.White;
-            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(108, 42, 214);
+            button.BackColor = CreamAccent;
+            button.ForeColor = DarkAccent;
+            button.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            button.FlatAppearance.MouseOverBackColor = Color.White;
         }
         else
         {
-            button.BackColor = Color.FromArgb(238, 235, 248);
-            button.ForeColor = LabelColor;
-            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(228, 222, 246);
+            button.BackColor = Color.FromArgb(35, 35, 32);
+            button.ForeColor = TextColor;
+            button.Font = new Font("Segoe UI", 9F);
+            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(50, 50, 46);
         }
 
         button.Click += (_, _) => onClick();

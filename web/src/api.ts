@@ -1,12 +1,16 @@
 import type {
   AgentInfo,
+  ActionResponse,
+  AuditEntry,
   CenterRoom,
   ControlState,
   HealthStatus,
+  LectureSummary,
   LectureSession,
   MissingSlot,
   MonitorSnapshot,
   QueueEntry,
+  QcReport,
   RoomOverview,
   StudioCenter,
   StudioFile,
@@ -57,7 +61,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     let message = `${res.status} ${res.statusText}`.trim();
     try {
       const body = await res.json();
-      if (body?.error) message = body.error;
+      if (body?.message || body?.error) message = body.message || body.error;
     } catch {
       // non-JSON error body; keep the status text
     }
@@ -99,6 +103,14 @@ export async function pollGoogleLogin(flowId: string): Promise<{ status: string;
   return request(`/api/auth/google/poll/${flowId}`);
 }
 
+export async function fetchYouTubeStatus(): Promise<{ enabled: boolean; connected: boolean }> {
+  return request('/api/auth/youtube/status');
+}
+
+export async function startYouTubeAuth(): Promise<{ flowId: string; consentUrl: string; redirectUri: string }> {
+  return request('/api/auth/youtube/start', { method: 'POST' });
+}
+
 // ---------- Read ----------
 
 export async function fetchHealth(): Promise<HealthStatus> {
@@ -123,8 +135,24 @@ export async function fetchLectures(centerId: string, limit = 50): Promise<{ tot
   return request(`/api/lectures?centerId=${encodeURIComponent(centerId)}&limit=${limit}`);
 }
 
+export async function fetchLectureById(lectureSessionId: string): Promise<LectureSession> {
+  return request(`/api/lectures/${encodeURIComponent(lectureSessionId)}`);
+}
+
 export async function fetchReviewQueue(centerId: string): Promise<LectureSession[]> {
   return request(`/api/lectures/review-queue?centerId=${encodeURIComponent(centerId)}`);
+}
+
+export async function fetchLectureSummary(centerId: string): Promise<LectureSummary> {
+  return request(`/api/lectures/summary?centerId=${encodeURIComponent(centerId)}`);
+}
+
+export async function fetchLectureQc(lectureId: string): Promise<ActionResponse<QcReport>> {
+  return request(`/api/lectures/${lectureId}/qc`);
+}
+
+export async function fetchAudit(limit = 50, offset = 0): Promise<{ total: number; count: number; items: AuditEntry[] }> {
+  return request(`/api/audit?limit=${limit}&offset=${offset}`);
 }
 
 export async function fetchTimetable(centerId: string, roomId?: string, date?: string): Promise<TimetableEntry[]> {
@@ -200,8 +228,20 @@ export async function confirmLecture(
   });
 }
 
-export async function rematchLecture(lectureId: string): Promise<LectureSession> {
+export async function rematchLecture(lectureId: string): Promise<{ success: boolean; message: string; data?: LectureSession }> {
   return request(`/api/lectures/${lectureId}/rematch`, { method: 'POST' });
+}
+
+export async function retryLectureUpload(lectureId: string): Promise<{ success: boolean; message: string; data?: LectureSession }> {
+  return request(`/api/lectures/${lectureId}/retry-upload`, { method: 'POST' });
+}
+
+export async function publishLectureToYouTube(lectureId: string): Promise<ActionResponse<LectureSession>> {
+  return request(`/api/lectures/${lectureId}/publish`, { method: 'POST' });
+}
+
+export async function unpublishLectureFromYouTube(lectureId: string): Promise<ActionResponse<LectureSession>> {
+  return request(`/api/lectures/${lectureId}/unpublish`, { method: 'POST' });
 }
 
 export async function cancelLecture(lectureId: string): Promise<LectureSession> {
@@ -392,4 +432,25 @@ export async function updateStudioToken(token: string): Promise<{ success: boole
     method: 'POST',
     body: JSON.stringify({ token }),
   });
+}
+
+// ---------- Mobile Cloud Tunnel ----------
+
+export interface TunnelStatus {
+  active: boolean;
+  url: string | null;
+  message: string | null;
+  startedAtUtc: string | null;
+}
+
+export async function fetchTunnelStatus(): Promise<TunnelStatus> {
+  return request('/api/tunnel/status');
+}
+
+export async function startTunnel(): Promise<TunnelStatus> {
+  return request('/api/tunnel/start', { method: 'POST' });
+}
+
+export async function stopTunnel(): Promise<TunnelStatus> {
+  return request('/api/tunnel/stop', { method: 'POST' });
 }

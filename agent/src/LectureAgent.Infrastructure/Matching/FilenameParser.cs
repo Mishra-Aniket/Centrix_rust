@@ -55,12 +55,12 @@ public static partial class FilenameParser
         ["physics"] = new[] { "physics", "phy" },
         ["chemistry"] = new[] { "chemistry", "chem" },
         ["mathematics"] = new[] { "mathematics", "maths", "math" },
-        ["biology"] = new[] { "biology", "bio" },
-        ["botany"] = new[] { "botany" },
+        ["maths"] = new[] { "mathematics", "maths", "math" },
+        ["botany"] = new[] { "botany", "bot" },
         ["zoology"] = new[] { "zoology", "zoo" },
-        ["english"] = new[] { "english" },
-        ["hindi"] = new[] { "hindi" },
-        ["reasoning"] = new[] { "reasoning" }
+        ["biology"] = new[] { "biology", "bio" },
+        ["sst"] = new[] { "sst", "social science", "social studies" },
+        ["english"] = new[] { "english", "eng" }
     };
 
     public static ParsedFilename Parse(string? fileName)

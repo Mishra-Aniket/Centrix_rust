@@ -8,6 +8,7 @@ use zip::ZipWriter;
 
 /// Result of a diagnostics export
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DiagnosticsResult {
     pub saved_path: String,
     pub file_count: usize,
@@ -69,12 +70,12 @@ fn collect_service_status() -> String {
 fn shared_root() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
-        PathBuf::from(r"C:\ProgramData\LectureAgent")
+        PathBuf::from(r"C:\ProgramData\Centrix")
     }
     #[cfg(not(target_os = "windows"))]
     {
         let home = std::env::var("HOME").unwrap_or_else(|_| "~".into());
-        PathBuf::from(home).join(".local/share/LectureAgent")
+        PathBuf::from(home).join(".local/share/Centrix")
     }
 }
 

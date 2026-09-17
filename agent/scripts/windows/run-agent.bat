@@ -1,9 +1,9 @@
 @echo off
-title LectureAgent - Room 603
+title Centrix Agent
 cd /d "%~dp0"
 
 echo =======================================================
-echo     LectureAgent - Room 603 (self-contained)
+echo     Centrix (self-contained)
 echo =======================================================
 echo.
 
@@ -21,7 +21,13 @@ echo To stop completely: close this window.
 echo.
 
 :loop
-LectureAgent.exe
+if exist "%~dp0CentrixAgent.exe" (
+    "%~dp0CentrixAgent.exe"
+) else if exist "%~dp0Centrix.exe" (
+    "%~dp0Centrix.exe"
+) else (
+    "%~dp0LectureAgent.exe"
+)
 echo.
 echo Agent stopped. Restarting in 5 seconds... (close this window to stop completely)
 timeout /t 5 /nobreak >nul

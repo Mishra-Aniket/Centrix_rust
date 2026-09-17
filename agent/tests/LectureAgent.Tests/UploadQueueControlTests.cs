@@ -170,5 +170,7 @@ public class UploadQueueControlTests : IDisposable
         public Task CreateFolderStructureAsync(string folderPath) => Task.CompletedTask;
         public Task<List<string>> ListFoldersAsync(string? query = null, int limit = 200, string? underPath = null, System.Threading.CancellationToken cancellationToken = default) =>
             Task.FromResult(new List<string>());
+        public Task<Stream> OpenDownloadStreamAsync(string fileId, System.Threading.CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream>(new MemoryStream());
     }
 }

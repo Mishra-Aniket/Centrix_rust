@@ -52,7 +52,7 @@ public sealed class DatabaseBackupService : BackgroundService
         var backupDirectory = Path.Combine(AgentPaths.DataRoot, "backups");
         Directory.CreateDirectory(backupDirectory);
 
-        var target = Path.Combine(backupDirectory, $"lecture_agent-{DateTime.UtcNow:yyyyMMdd}.db");
+        var target = Path.Combine(backupDirectory, $"centrix-{DateTime.UtcNow:yyyyMMdd}.db");
         if (File.Exists(target))
         {
             PruneOldBackups(backupDirectory);
@@ -73,7 +73,7 @@ public sealed class DatabaseBackupService : BackgroundService
 
     private string ResolveDatabasePath()
     {
-        var dbPath = _configuration["Database:SqlitePath"] ?? "data/lecture_agent.db";
+        var dbPath = _configuration["Database:SqlitePath"] ?? "data/centrix.db";
         if (!Path.IsPathRooted(dbPath))
         {
             dbPath = Path.Combine(AgentPaths.DataRoot, dbPath);
@@ -84,7 +84,7 @@ public sealed class DatabaseBackupService : BackgroundService
 
     private void PruneOldBackups(string backupDirectory)
     {
-        var backups = Directory.GetFiles(backupDirectory, "lecture_agent-*.db")
+        var backups = Directory.GetFiles(backupDirectory, "centrix-*.db")
             .OrderByDescending(File.GetLastWriteTimeUtc)
             .ToList();
 

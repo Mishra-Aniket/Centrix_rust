@@ -4,6 +4,7 @@ using LectureAgent.Application.Services;
 using LectureAgent.Domain.Entities;
 using LectureAgent.Domain.Enums;
 using LectureAgent.Domain.Services;
+using LectureAgent.Infrastructure.YouTube;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -55,7 +56,16 @@ public class UploadProcessingService : BackgroundService
                 _logger.LogError($"Error processing queue: {ex.Message}");
             }
 
-            await Task.Delay(checkInterval * 1000, stoppingToken);
+            // A cancellation here is the host shutting down, not a fault: log noise
+            // from this delay previously surfaced as a fatal StopHost error.
+            try
+            {
+                await Task.Delay(checkInterval * 1000, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
 
         _logger.LogInformation("Upload processing service stopped");
@@ -198,6 +208,22 @@ public class UploadProcessingService : BackgroundService
                             session.UpdatedAt = DateTime.UtcNow;
                             await lectureRepo.UpdateAsync(session);
                             await lectureRepo.SaveChangesAsync();
+
+                            // Auto-trigger sequential local YouTube publish (Drive-to-YouTube streaming) after Drive upload completes
+                            if (!entry.FileType.Equals("PDF", StringComparison.OrdinalIgnoreCase) &&
+                                _config.GetValue("YouTube:AutoPublishAfterDriveUpload", true))
+                            {
+                                var youTubeQueue = scope.ServiceProvider.GetService<YouTubePublishQueue>();
+                                if (youTubeQueue != null)
+                                {
+                                    session.YouTubePublishStatus = YouTubePublishStatus.PublishQueued;
+                                    await lectureRepo.UpdateAsync(session);
+                                    await lectureRepo.SaveChangesAsync();
+
+                                    youTubeQueue.TryEnqueue(new YouTubePublishJob(session.LectureSessionId, YouTubePublishJobKind.Publish));
+                                    _logger.LogInformation("Automatically queued local YouTube streaming for lecture {LectureId} after Drive upload completed", session.LectureSessionId);
+                                }
+                            }
                         }
                     }
                     else

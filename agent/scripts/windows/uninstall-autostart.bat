@@ -1,5 +1,5 @@
 @echo off
-title Remove LectureAgent Autostart
-del "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\LectureAgent.lnk"
-echo [DONE] Autostart removed. If the agent is still running, restart the PC once.
+title Remove Centrix Autostart
+del "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Centrix.lnk"
+echo [DONE] Centrix autostart removed. If the agent is still running, restart the PC once.
 pause

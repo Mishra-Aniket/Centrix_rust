@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 
 namespace LectureAgent.Desktop;
 
@@ -71,6 +72,16 @@ internal sealed class AgentSettings
         set => SetValue(value, "FileWatcher", "MonitorFolder");
     }
 
+    /// <summary>
+    /// Optional separate folder for notes (PDF/PPT). Blank keeps everything in the
+    /// recordings folder.
+    /// </summary>
+    internal string NotesMonitorFolder
+    {
+        get => GetString("FileWatcher", "NotesFolder");
+        set => SetValue(value, "FileWatcher", "NotesFolder");
+    }
+
     internal bool GoogleDriveEnabled
     {
         get => GetBool("GoogleDrive", "Enabled") ?? true;
@@ -87,6 +98,18 @@ internal sealed class AgentSettings
     {
         get => GetString("GoogleDrive", "RootFolderPath");
         set => SetValue(value, "GoogleDrive", "RootFolderPath");
+    }
+
+    internal bool YouTubeEnabled
+    {
+        get => GetBool("YouTube", "Enabled") ?? false;
+        set => SetValue(value, "YouTube", "Enabled");
+    }
+
+    internal bool YouTubeAutoPublish
+    {
+        get => GetBool("YouTube", "AutoPublishAfterDriveUpload") ?? false;
+        set => SetValue(value, "YouTube", "AutoPublishAfterDriveUpload");
     }
 
     internal int Port
@@ -110,13 +133,31 @@ internal sealed class AgentSettings
         // and the Drive token must sit in the shared, writable ProgramData folder.
         SetValue(true, "Auth", "Enabled");
         SetValue(true, "FileWatcher", "EnableFileWatcher");
-        SetValue(Path.Combine(AppPaths.DataDirectory, "lecture_agent.db"), "Database", "SqlitePath");
+        // New installs use the Centrix database name. Keep an existing legacy database
+        // in place so opening Settings after an upgrade never makes old lecture data disappear.
+        var databasePath = Path.Combine(AppPaths.DataDirectory, "centrix.db");
+        var legacyDatabasePath = Path.Combine(AppPaths.DataDirectory, "lecture_agent.db");
+        if (!File.Exists(databasePath) && File.Exists(legacyDatabasePath))
+        {
+            databasePath = legacyDatabasePath;
+        }
+
+        SetValue(databasePath, "Database", "SqlitePath");
         SetValue(Path.Combine(AppPaths.DataDirectory, "google-drive-token"), "GoogleDrive", "TokenPath");
+        SetValue(Path.Combine(AppPaths.DataDirectory, "youtube-token"), "YouTube", "TokenPath");
 
         Directory.CreateDirectory(AppPaths.SharedRoot);
         Directory.CreateDirectory(AppPaths.DataDirectory);
 
-        var json = _root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        // JsonNode values created through JsonValue.Create require an explicit
+        // resolver when these options become read-only on .NET 8. Without it,
+        // saving setup settings throws before the Google authorization helper
+        // can start.
+        var json = _root.ToJsonString(new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver()
+        });
         var temporaryFile = AppPaths.SettingsFile + ".tmp";
         File.WriteAllText(temporaryFile, json);
         File.Move(temporaryFile, AppPaths.SettingsFile, overwrite: true);

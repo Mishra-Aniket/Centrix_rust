@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import QRCode from 'qrcode';
 import {
   AlertCircle,
   AlertTriangle,
@@ -10,12 +11,14 @@ import {
   Copy,
   Cpu,
   Download,
+  ExternalLink,
   FileCheck2,
   FileText,
   FileUp,
   FolderOpen,
   FolderSearch,
   Gauge,
+  Globe,
   HardDrive,
   KeyRound,
   Loader2,
@@ -23,19 +26,25 @@ import {
   MemoryStick,
   MonitorPause,
   PauseCircle,
+  Play,
   PlayCircle,
   Power,
+  QrCode,
   RefreshCw,
   Save,
   Server,
   Smartphone,
+  Sparkles,
   UploadCloud,
   Video,
   Wifi,
 } from 'lucide-react';
 import * as api from '../api';
-import type { AgentInfo, ControlState, HealthStatus, MonitorSnapshot } from '../types';
+import type { AgentInfo, ControlState, HealthStatus, MonitorSnapshot, LectureSession } from '../types';
+import { STANDARD_SUBJECTS } from '../types';
 import { ActionButton, Card, Pill } from '../ui';
+import { MediaPreviewModal } from '../components/MediaPreviewModal';
+
 import {
   isTauri,
   getSystemHealth,
@@ -166,6 +175,12 @@ export function ControlsScreen({
     batch?: string;
   } | null>(null);
 
+  // --- Preview & YouTube Studio State ---
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [previewLecture, setPreviewLecture] = useState<LectureSession | null>(null);
+  const [loadingPreviewLecture, setLoadingPreviewLecture] = useState<boolean>(false);
+
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- System Health Watchdog State ---
@@ -190,6 +205,58 @@ export function ControlsScreen({
     currentStatus: 'Unrestricted',
   });
   const [savingBandwidth, setSavingBandwidth] = useState<boolean>(false);
+
+  // --- Mobile Cloud Tunnel State ---
+  const [tunnelStatus, setTunnelStatus] = useState<api.TunnelStatus | null>(null);
+  const [tunnelLoading, setTunnelLoading] = useState<boolean>(false);
+  const [tunnelQrCode, setTunnelQrCode] = useState<string | null>(null);
+  const [copiedTunnelUrl, setCopiedTunnelUrl] = useState<boolean>(false);
+
+  useEffect(() => {
+    let mounted = true;
+    api.fetchTunnelStatus().then(async (status) => {
+      if (!mounted) return;
+      setTunnelStatus(status);
+      if (status.active && status.url) {
+        try {
+          const qr = await QRCode.toDataURL(status.url, { width: 240, margin: 1 });
+          if (mounted) setTunnelQrCode(qr);
+        } catch {}
+      }
+    }).catch(() => {});
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleToggleTunnel = async () => {
+    setTunnelLoading(true);
+    try {
+      if (tunnelStatus?.active) {
+        const res = await api.stopTunnel();
+        setTunnelStatus(res);
+        setTunnelQrCode(null);
+      } else {
+        const res = await api.startTunnel();
+        setTunnelStatus(res);
+        if (res.active && res.url) {
+          const qr = await QRCode.toDataURL(res.url, { width: 240, margin: 1 });
+          setTunnelQrCode(qr);
+        }
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Tunnel connection failed');
+    } finally {
+      setTunnelLoading(false);
+    }
+  };
+
+  const copyTunnel = (url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedTunnelUrl(true);
+    setTimeout(() => setCopiedTunnelUrl(false), 2000);
+  };
 
   // Poll system health every 5 seconds (only in Tauri mode)
   useEffect(() => {
@@ -318,10 +385,45 @@ export function ControlsScreen({
     }
   };
 
+  const detectSubjectFromFilename = (filename: string) => {
+    const lower = filename.toLowerCase();
+    const found = STANDARD_SUBJECTS.find((sub) => lower.includes(sub.toLowerCase()));
+    if (found && !customSubject) {
+      setCustomSubject(found);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setSelectedFile(e.target.files[0]);
+      const file = e.target.files[0];
+      setSelectedFile(file);
       setUploadMsg(null);
+      detectSubjectFromFilename(file.name);
+    }
+  };
+
+  const handleWatchUploaded = async (lectureId: string) => {
+    setLoadingPreviewLecture(true);
+    try {
+      const lecture = await api.fetchLectureById(lectureId);
+      if (lecture) {
+        setPreviewLecture(lecture);
+      }
+    } catch {
+      setPreviewLecture({
+        lectureSessionId: lectureId,
+        date: new Date().toISOString().split('T')[0],
+        batchId: uploadMsg?.batch || 'Uploaded Batch',
+        subject: customSubject || 'Lecture',
+        hasVideo: true,
+        driveVideoUrl: null,
+        youtubeVideoId: null,
+        youtubeUrl: null,
+        youtubeStatus: 'Disabled',
+        youtubePublishedAt: null,
+      } as unknown as LectureSession);
+    } finally {
+      setLoadingPreviewLecture(false);
     }
   };
 
@@ -369,9 +471,76 @@ export function ControlsScreen({
 
   return (
     <div className="space-y-4">
-      <div className="px-1">
-        <h2 className="text-base font-bold text-slate-900">Agent Controls & Data Source</h2>
-        <p className="text-xs text-slate-500">Manage recording directories, manual file uploads, and runtime switches</p>
+      {/* Hero Operations Center */}
+      <div className="bg-[var(--paper)] border border-[var(--rule)] p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <h2 className="font-serif text-lg font-normal text-[var(--ink)]">Control Hub & Live Operations</h2>
+            </div>
+            <p className="text-xs font-mono text-[var(--stone)] mt-0.5">
+              Live ingest pipelines, recording directory sync, and automated cloud distribution
+            </p>
+          </div>
+
+          {/* Service Live Badges */}
+          <div className="flex items-center gap-2 flex-wrap font-mono text-[10px] uppercase tracking-wider">
+            <span
+              className={`px-2.5 py-1 border flex items-center gap-1.5 ${
+                !controlState?.uploadsPaused
+                  ? 'bg-emerald-950/20 text-emerald-500 border-emerald-700/40'
+                  : 'bg-amber-950/20 text-amber-500 border-amber-700/40'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${!controlState?.uploadsPaused ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              Drive Uploads: {!controlState?.uploadsPaused ? 'Active' : 'Paused'}
+            </span>
+
+            <span
+              className={`px-2.5 py-1 border flex items-center gap-1.5 ${
+                isWatcherRunning && folderExists
+                  ? 'bg-[var(--cream)] text-[var(--ink)] border-[var(--rule)]'
+                  : 'bg-amber-950/20 text-amber-500 border-amber-700/40'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${isWatcherRunning && folderExists ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              Watcher: {isWatcherRunning && folderExists ? 'Active' : 'Paused'}
+            </span>
+          </div>
+        </div>
+
+        {/* Quick Actions Bar */}
+        <div className="pt-3 border-t border-[var(--rule)] flex items-center justify-between flex-wrap gap-2 font-mono">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onRescan}
+              disabled={busy}
+              className="px-3 py-1.5 text-xs uppercase tracking-wider border border-[var(--rule)] bg-[var(--cream)] hover:bg-[var(--paper)] text-[var(--ink)] transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <FolderSearch className="w-3.5 h-3.5 text-[var(--stone)]" />
+              <span>Rescan Recordings Folder</span>
+            </button>
+            <button
+              onClick={onSyncNow}
+              disabled={busy || controlState?.timetableSyncPaused}
+              className="px-3 py-1.5 text-xs uppercase tracking-wider border border-[var(--rule)] bg-[var(--cream)] hover:bg-[var(--paper)] text-[var(--ink)] transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <CloudUpload className="w-3.5 h-3.5 text-[var(--stone)]" />
+              <span>Sync Timetable Sheet</span>
+            </button>
+            {failedCount > 0 && (
+              <button
+                onClick={onRetryAllFailed}
+                disabled={busy}
+                className="px-3 py-1.5 text-xs uppercase tracking-wider border border-red-700/40 bg-red-950/20 text-red-400 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Retry Failed ({failedCount})</span>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Desktop 2-Column Grid */}
@@ -379,15 +548,15 @@ export function ControlsScreen({
         {/* Left Column: Folders and Manual Upload */}
         <div className="space-y-6">
           {/* 1. Monitored Directory Configuration */}
-          <Card className="space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+          <Card className="space-y-3 font-mono">
+        <div className="flex items-center justify-between border-b border-[var(--rule)] pb-2.5">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+            <div className="w-7 h-7 border border-[var(--rule)] bg-[var(--cream)] flex items-center justify-center text-[var(--ink)]">
               <FolderOpen className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-xs font-bold text-slate-900">Recording Source Folder</h3>
-              <p className="text-[10px] text-slate-500">Directory watched by the agent for new lecture videos and notes</p>
+              <h3 className="font-serif text-sm font-normal text-[var(--ink)]">Recording Source Folder</h3>
+              <p className="text-[10px] text-[var(--stone)]">Directory watched by the agent for new lecture videos and notes</p>
             </div>
           </div>
           <Pill tone={isWatcherRunning && folderExists ? 'emerald' : 'amber'}>
@@ -396,9 +565,9 @@ export function ControlsScreen({
         </div>
 
         <div className="space-y-2">
-          <div className="text-[11px] font-medium text-slate-600 flex items-center justify-between">
+          <div className="text-[11px] text-[var(--stone)] flex items-center justify-between">
             <span>Current Monitored Path:</span>
-            <span className="font-mono text-[10px] text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded-md truncate max-w-[280px]">
+            <span className="text-[10px] text-[var(--ink)] border border-[var(--rule)] bg-[var(--cream)] px-2 py-0.5 truncate max-w-[280px]">
               {activeWatchedPath || 'Not configured'}
             </span>
           </div>
@@ -409,7 +578,7 @@ export function ControlsScreen({
               value={folderPathInput}
               onChange={(e) => setFolderPathInput(e.target.value)}
               placeholder="e.g. D:\Recordings or /Users/.../Documents/Recordings"
-              className="flex-1 text-xs font-mono px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500 text-slate-800"
+              className="flex-1 text-xs font-mono px-3 py-2 bg-[var(--cream)] border border-[var(--rule)] text-[var(--ink)] focus:outline-none"
             />
             {isTauri() && (
               <button
@@ -418,7 +587,7 @@ export function ControlsScreen({
                   const picked = await pickFolder(folderPathInput || undefined);
                   if (picked) setFolderPathInput(picked);
                 }}
-                className="px-3 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 transition active:scale-95 shrink-0 shadow-2xs"
+                className="px-3 py-2 text-xs font-mono uppercase tracking-wider border border-[var(--rule)] bg-[var(--cream)] hover:bg-[var(--paper)] text-[var(--ink)] transition cursor-pointer shrink-0"
                 title="Browse folder on your PC"
               >
                 Browse...
@@ -427,7 +596,7 @@ export function ControlsScreen({
             <button
               onClick={handleSaveFolder}
               disabled={savingFolder || !folderPathInput.trim() || folderPathInput.trim() === activeWatchedPath}
-              className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white transition active:scale-95 disabled:opacity-40 flex items-center gap-1.5 shrink-0 shadow-xs"
+              className="px-3.5 py-2 text-xs font-mono uppercase tracking-wider bg-[var(--ink)] hover:opacity-90 text-[var(--cream)] transition disabled:opacity-40 flex items-center gap-1.5 shrink-0 cursor-pointer"
             >
               {savingFolder ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
               <span>Update Folder</span>
@@ -467,15 +636,15 @@ export function ControlsScreen({
       </Card>
 
       {/* 2. Manual File Ingestion / Upload */}
-      <Card className="space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+      <Card className="space-y-3 font-mono">
+        <div className="flex items-center justify-between border-b border-[var(--rule)] pb-2.5">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-cyan-50 text-cyan-600">
+            <div className="w-7 h-7 border border-[var(--rule)] bg-[var(--cream)] flex items-center justify-center text-[var(--ink)]">
               <FileUp className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-xs font-bold text-slate-900">Manual File Ingestion / Upload</h3>
-              <p className="text-[10px] text-slate-500">Pick any lecture recording (.mp4, .mkv) or notes (.pdf) from this device</p>
+              <h3 className="font-serif text-sm font-normal text-[var(--ink)]">Manual File Ingestion / Upload</h3>
+              <p className="text-[10px] text-[var(--stone)]">Pick any lecture recording (.mp4, .mkv) or notes (.pdf) from this device</p>
             </div>
           </div>
           <Pill tone="cyan">Zero-Touch Match</Pill>
@@ -500,16 +669,18 @@ export function ControlsScreen({
               e.stopPropagation();
               setIsDragging(false);
               if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                setSelectedFile(e.dataTransfer.files[0]);
+                const file = e.dataTransfer.files[0];
+                setSelectedFile(file);
                 setUploadMsg(null);
+                detectSubjectFromFilename(file.name);
               }
             }}
-            className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition ${
+            className={`border border-dashed p-6 text-center cursor-pointer transition ${
               isDragging
-                ? 'border-cyan-500 bg-cyan-50/80 ring-4 ring-cyan-500/10 scale-[1.01]'
+                ? 'border-[var(--ink)] bg-[var(--cream)]'
                 : selectedFile
-                ? 'border-cyan-400 bg-cyan-50/40'
-                : 'border-slate-200 hover:border-cyan-300 hover:bg-slate-50/80 bg-slate-50/40'
+                ? 'border-[var(--ink)] bg-[var(--cream)]'
+                : 'border-[var(--rule)] hover:border-[var(--stone)] bg-[var(--cream)]'
             }`}
           >
             <input
@@ -520,44 +691,68 @@ export function ControlsScreen({
               className="hidden"
             />
             {isDragging ? (
-              <div className="space-y-1 py-1">
-                <UploadCloud className="w-7 h-7 text-cyan-600 mx-auto animate-bounce" />
-                <p className="text-xs font-bold text-cyan-800">Drop recording or notes file here</p>
-                <p className="text-[10px] text-cyan-600 font-medium">Release to ingest directly into Centrix</p>
+              <div className="space-y-1 py-1 font-mono">
+                <UploadCloud className="w-6 h-6 text-[var(--ink)] mx-auto animate-bounce" />
+                <p className="text-xs text-[var(--ink)]">Drop recording or notes file here</p>
               </div>
             ) : selectedFile ? (
-              <div className="flex items-center justify-center gap-3 text-left">
-                <div className="p-2.5 rounded-xl bg-white border border-cyan-200 text-cyan-600 shadow-xs">
-                  {selectedFile.name.toLowerCase().endsWith('.pdf') ? (
-                    <FileText className="w-5 h-5" />
-                  ) : (
-                    <Video className="w-5 h-5" />
-                  )}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left font-mono">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 border border-[var(--rule)] bg-[var(--paper)] flex items-center justify-center text-[var(--stone)] shrink-0">
+                    {selectedFile.name.toLowerCase().endsWith('.pdf') ? (
+                      <FileText className="w-4 h-4" />
+                    ) : (
+                      <Video className="w-4 h-4" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-[var(--ink)] truncate max-w-[220px]">{selectedFile.name}</p>
+                    <p className="text-[10px] text-[var(--stone)]">
+                      {formatBytes(selectedFile.size)} · Click to replace
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-slate-900 truncate max-w-[240px]">{selectedFile.name}</p>
-                  <p className="text-[10px] text-slate-500 font-mono">
-                    {formatBytes(selectedFile.size)} · Click or drop another file to change
-                  </p>
+
+                <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewFile(selectedFile)}
+                    className="px-3 py-1.5 border border-[var(--rule)] bg-[var(--paper)] text-[var(--ink)] text-xs uppercase tracking-wider flex items-center gap-1.5 transition cursor-pointer"
+                    title="Preview video playback or PDF notes before uploading"
+                  >
+                    <Play className="w-3 h-3 fill-current" />
+                    <span>Preview</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    className="px-2.5 py-1.5 border border-[var(--rule)] bg-[var(--cream)] text-[var(--stone)] hover:text-red-500 text-xs uppercase tracking-wider transition cursor-pointer"
+                    title="Clear file"
+                  >
+                    ✕ Clear
+                  </button>
                 </div>
               </div>
             ) : (
-              <div className="space-y-1">
-                <UploadCloud className="w-6 h-6 text-slate-400 mx-auto" />
-                <p className="text-xs font-semibold text-slate-700">Click or drag & drop recording / notes file</p>
-                <p className="text-[10px] text-slate-400">Supports MP4, MKV, WEBM, PDF (up to 10 GB)</p>
+              <div className="space-y-1 font-mono">
+                <UploadCloud className="w-6 h-6 text-[var(--stone)] mx-auto" />
+                <p className="text-xs text-[var(--ink)]">Click or drag & drop recording / notes file</p>
+                <p className="text-[10px] text-[var(--stone)]">Supports MP4, MKV, WEBM, PDF (up to 10 GB)</p>
               </div>
             )}
           </div>
 
           {/* Optional Meta Filters */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2 font-mono">
             <div>
-              <label className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Target Room</label>
+              <label className="text-[10px] uppercase text-[var(--stone)] block mb-1">Target Room</label>
               <select
                 value={targetRoom}
                 onChange={(e) => setTargetRoom(e.target.value)}
-                className="w-full text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-cyan-500/30 text-slate-800"
+                className="w-full text-xs px-2.5 py-1.5 bg-[var(--cream)] border border-[var(--rule)] text-[var(--ink)] focus:outline-none"
               >
                 {rooms.length > 0 ? (
                   rooms.map((r) => (
@@ -572,30 +767,53 @@ export function ControlsScreen({
             </div>
 
             <div>
-              <label className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Batch (Optional)</label>
+              <label className="text-[10px] uppercase text-[var(--stone)] block mb-1">Batch (Optional)</label>
               <input
                 type="text"
                 value={customBatch}
                 onChange={(e) => setCustomBatch(e.target.value)}
                 placeholder="e.g. 11TH-JEE-A"
-                className="w-full text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-cyan-500/30 text-slate-800"
+                className="w-full text-xs px-2.5 py-1.5 bg-[var(--cream)] border border-[var(--rule)] text-[var(--ink)] focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Subject (Optional)</label>
+              <label className="text-[10px] uppercase text-[var(--stone)] block mb-1">Subject (Optional)</label>
               <input
                 type="text"
                 value={customSubject}
                 onChange={(e) => setCustomSubject(e.target.value)}
                 placeholder="e.g. Physics"
-                className="w-full text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-cyan-500/30 text-slate-800"
+                className="w-full text-xs px-2.5 py-1.5 bg-[var(--cream)] border border-[var(--rule)] text-[var(--ink)] focus:outline-none"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-1">
-            <p className="text-[10px] text-slate-400">
+          {/* Quick Subject Selection Chips (8 Standard Timetable Subjects) */}
+          <div className="space-y-1.5 pt-0.5 font-mono">
+            <span className="text-[10px] uppercase tracking-wider text-[var(--stone)] block">
+              Quick Subject Select:
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {STANDARD_SUBJECTS.map((subj) => (
+                <button
+                  key={subj}
+                  type="button"
+                  onClick={() => setCustomSubject(subj)}
+                  className={`px-2 py-0.5 text-[10px] uppercase tracking-wider border transition cursor-pointer ${
+                    customSubject.toLowerCase() === subj.toLowerCase()
+                      ? 'bg-[var(--ink)] text-[var(--cream)] border-[var(--ink)]'
+                      : 'bg-[var(--cream)] hover:bg-[var(--paper)] text-[var(--ink)] border-[var(--rule)]'
+                  }`}
+                >
+                  {subj}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-1 font-mono">
+            <p className="text-[10px] text-[var(--stone)]">
               {customBatch.trim()
                 ? 'Batch is specified; direct Drive queueing will be used.'
                 : 'Empty batch = Auto-detected via OCR & timetable matching engine.'}
@@ -603,7 +821,7 @@ export function ControlsScreen({
             <button
               type="submit"
               disabled={!selectedFile || isUploading}
-              className="px-4 py-2 text-xs font-semibold rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white transition active:scale-95 disabled:opacity-40 flex items-center gap-1.5 shadow-xs shrink-0"
+              className="px-4 py-2 text-xs uppercase tracking-wider bg-[var(--ink)] hover:opacity-90 text-[var(--cream)] transition disabled:opacity-40 flex items-center gap-1.5 shrink-0 cursor-pointer"
             >
               {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileCheck2 className="w-3.5 h-3.5" />}
               <span>{isUploading ? 'Ingesting File...' : 'Upload & Process'}</span>
@@ -612,25 +830,43 @@ export function ControlsScreen({
 
           {uploadMsg && (
             <div
-              className={`p-3 rounded-xl text-xs flex items-start gap-2.5 ${
+              className={`p-3 rounded-xl text-xs flex items-center justify-between gap-2.5 ${
                 uploadMsg.type === 'success'
                   ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                   : 'bg-rose-50 text-rose-800 border border-rose-200'
               }`}
             >
-              {uploadMsg.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              )}
-              <div className="space-y-0.5 min-w-0">
-                <p className="font-semibold text-xs">{uploadMsg.text}</p>
-                {uploadMsg.lectureId && (
-                  <p className="text-[10px] font-mono text-emerald-700">
-                    Session ID: {uploadMsg.lectureId} {uploadMsg.batch ? `· Batch: ${uploadMsg.batch}` : ''}
-                  </p>
+              <div className="flex items-start gap-2.5 min-w-0">
+                {uploadMsg.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 )}
+                <div className="space-y-0.5 min-w-0">
+                  <p className="font-semibold text-xs">{uploadMsg.text}</p>
+                  {uploadMsg.lectureId && (
+                    <p className="text-[10px] font-mono text-emerald-700">
+                      Session ID: {uploadMsg.lectureId} {uploadMsg.batch ? `· Batch: ${uploadMsg.batch}` : ''}
+                    </p>
+                  )}
+                </div>
               </div>
+
+              {uploadMsg.lectureId && (
+                <button
+                  type="button"
+                  onClick={() => handleWatchUploaded(uploadMsg.lectureId!)}
+                  disabled={loadingPreviewLecture}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-2xs shrink-0 active:scale-95 transition"
+                >
+                  {loadingPreviewLecture ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                  )}
+                  <span>Watch Lecture</span>
+                </button>
+              )}
             </div>
           )}
         </form>
@@ -641,91 +877,104 @@ export function ControlsScreen({
     <div className="space-y-6">
 
       {/* System Health Watchdog */}
-      {isTauri() && systemHealth && (
-        <Card className="space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
-                <Cpu className="w-4 h-4" />
+      {isTauri() && systemHealth && (() => {
+        const raw = systemHealth as any;
+        const cpuUsage = Number(systemHealth.cpuUsagePercent ?? raw.cpu_usage_percent ?? 0);
+        const ramUsed = Number(systemHealth.ramUsedBytes ?? raw.ram_used_bytes ?? 0);
+        const ramTotal = Number(systemHealth.ramTotalBytes ?? raw.ram_total_bytes ?? 1);
+        const diskFree = Number(systemHealth.diskFreeBytes ?? raw.disk_free_bytes ?? 0);
+        const diskTotal = Number(systemHealth.diskTotalBytes ?? raw.disk_total_bytes ?? 1);
+        const diskUsage = Number(systemHealth.diskUsagePercent ?? raw.disk_usage_percent ?? 0);
+        const diskMount = String(systemHealth.diskMountPoint ?? raw.disk_mount_point ?? '/');
+        const uptimeSecs = Number(systemHealth.uptimeSeconds ?? raw.uptime_seconds ?? 0);
+        const isLowDisk = diskFree < 20 * 1_073_741_824;
+
+        return (
+          <Card className="space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+                  <Cpu className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900">System Health</h3>
+                  <p className="text-[10px] text-slate-500">Live CPU, RAM & recording drive metrics</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-xs font-bold text-slate-900">System Health</h3>
-                <p className="text-[10px] text-slate-500">Live CPU, RAM & recording drive metrics</p>
+              <Pill tone={isLowDisk ? 'red' : 'emerald'}>
+                {isLowDisk ? 'Low Disk' : 'Healthy'}
+              </Pill>
+            </div>
+
+            {/* Low Disk Alert */}
+            {isLowDisk && (
+              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                <p className="text-[11px] font-semibold text-red-800">
+                  Low Disk Space! Only {(diskFree / 1_073_741_824).toFixed(1)} GB free. Clean up old recordings to prevent OBS failures.
+                </p>
+              </div>
+            )}
+
+            {/* CPU */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-600 flex items-center gap-1.5"><Cpu className="w-3 h-3 text-slate-400" /> CPU</span>
+                <span className="font-bold text-slate-800">{cpuUsage.toFixed(0)}%</span>
+              </div>
+              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${cpuUsage > 85 ? 'bg-red-500' : cpuUsage > 60 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                  style={{ width: `${Math.min(cpuUsage, 100)}%` }}
+                />
               </div>
             </div>
-            <Pill tone={systemHealth.diskFreeBytes < 20 * 1_073_741_824 ? 'red' : 'emerald'}>
-              {systemHealth.diskFreeBytes < 20 * 1_073_741_824 ? 'Low Disk' : 'Healthy'}
-            </Pill>
-          </div>
 
-          {/* Low Disk Alert */}
-          {systemHealth.diskFreeBytes < 20 * 1_073_741_824 && (
-            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-              <p className="text-[11px] font-semibold text-red-800">
-                Low Disk Space! Only {(systemHealth.diskFreeBytes / 1_073_741_824).toFixed(1)} GB free. Clean up old recordings to prevent OBS failures.
-              </p>
+            {/* RAM */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-600 flex items-center gap-1.5"><MemoryStick className="w-3 h-3 text-slate-400" /> RAM</span>
+                <span className="font-bold text-slate-800">
+                  {(ramUsed / 1_073_741_824).toFixed(1)} / {(ramTotal / 1_073_741_824).toFixed(1)} GB
+                </span>
+              </div>
+              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${ramUsed / ramTotal > 0.85 ? 'bg-red-500' : ramUsed / ramTotal > 0.7 ? 'bg-amber-500' : 'bg-cyan-500'}`}
+                  style={{ width: `${((ramUsed / ramTotal) * 100).toFixed(0)}%` }}
+                />
+              </div>
             </div>
-          )}
 
-          {/* CPU */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-600 flex items-center gap-1.5"><Cpu className="w-3 h-3 text-slate-400" /> CPU</span>
-              <span className="font-bold text-slate-800">{systemHealth.cpuUsagePercent.toFixed(0)}%</span>
+            {/* Disk */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-600 flex items-center gap-1.5">
+                  <HardDrive className="w-3 h-3 text-slate-400" /> Disk
+                  <span className="text-[9px] text-slate-400 font-mono">({diskMount})</span>
+                </span>
+                <span className="font-bold text-slate-800">
+                  {(diskFree / 1_073_741_824).toFixed(0)} GB free / {(diskTotal / 1_073_741_824).toFixed(0)} GB
+                </span>
+              </div>
+              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${diskUsage > 90 ? 'bg-red-500' : diskUsage > 75 ? 'bg-amber-500' : 'bg-indigo-500'}`}
+                  style={{ width: `${diskUsage.toFixed(0)}%` }}
+                />
+              </div>
             </div>
-            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${systemHealth.cpuUsagePercent > 85 ? 'bg-red-500' : systemHealth.cpuUsagePercent > 60 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                style={{ width: `${Math.min(systemHealth.cpuUsagePercent, 100)}%` }}
-              />
-            </div>
-          </div>
 
-          {/* RAM */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-600 flex items-center gap-1.5"><MemoryStick className="w-3 h-3 text-slate-400" /> RAM</span>
-              <span className="font-bold text-slate-800">
-                {(systemHealth.ramUsedBytes / 1_073_741_824).toFixed(1)} / {(systemHealth.ramTotalBytes / 1_073_741_824).toFixed(1)} GB
+            {/* Uptime */}
+            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-100">
+              <span>System Uptime</span>
+              <span className="font-mono">
+                {Math.floor(uptimeSecs / 3600)}h {Math.floor((uptimeSecs % 3600) / 60)}m
               </span>
             </div>
-            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${systemHealth.ramUsedBytes / systemHealth.ramTotalBytes > 0.85 ? 'bg-red-500' : systemHealth.ramUsedBytes / systemHealth.ramTotalBytes > 0.7 ? 'bg-amber-500' : 'bg-cyan-500'}`}
-                style={{ width: `${(systemHealth.ramUsedBytes / systemHealth.ramTotalBytes * 100).toFixed(0)}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Disk */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-600 flex items-center gap-1.5">
-                <HardDrive className="w-3 h-3 text-slate-400" /> Disk
-                <span className="text-[9px] text-slate-400 font-mono">({systemHealth.diskMountPoint})</span>
-              </span>
-              <span className="font-bold text-slate-800">
-                {(systemHealth.diskFreeBytes / 1_073_741_824).toFixed(0)} GB free / {(systemHealth.diskTotalBytes / 1_073_741_824).toFixed(0)} GB
-              </span>
-            </div>
-            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${systemHealth.diskUsagePercent > 90 ? 'bg-red-500' : systemHealth.diskUsagePercent > 75 ? 'bg-amber-500' : 'bg-indigo-500'}`}
-                style={{ width: `${systemHealth.diskUsagePercent.toFixed(0)}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Uptime */}
-          <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-100">
-            <span>System Uptime</span>
-            <span className="font-mono">
-              {Math.floor(systemHealth.uptimeSeconds / 3600)}h {Math.floor((systemHealth.uptimeSeconds % 3600) / 60)}m
-            </span>
-          </div>
-        </Card>
-      )}
+          </Card>
+        );
+      })()}
 
       {/* 3. Runtime Switches */}
       <Card className="space-y-0">
@@ -816,59 +1065,183 @@ export function ControlsScreen({
         </div>
       </Card>
 
-      {/* 5. Mobile & Tablet Access (Same WiFi) */}
-      <Card className="space-y-3 text-xs">
+      {/* 5. Mobile & Tablet Access (Cloud Tunnel + WiFi) */}
+      <Card className="space-y-4 text-xs">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-cyan-50 text-cyan-700">
-              <Wifi className="w-4 h-4" />
+              <Smartphone className="w-4 h-4" />
             </div>
             <div>
-              <h4 className="font-bold text-slate-900">Mobile & Tablet Access (Same WiFi)</h4>
-              <p className="text-[10px] text-slate-500">Open Centrix from classroom phones or tablets on center network</p>
+              <h4 className="font-bold text-slate-900">Mobile & Tablet Access</h4>
+              <p className="text-[10px] text-slate-500">Live remote control from any mobile or classroom device</p>
             </div>
           </div>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-            Port {agentInfo?.httpPort || 5200}
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1.5 ${
+              tunnelStatus?.active
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-slate-100 text-slate-600 border-slate-200'
+            }`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                tunnelStatus?.active ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+              }`}
+            />
+            {tunnelStatus?.active ? 'Tunnel Live' : 'Offline'}
           </span>
         </div>
 
-        {(agentInfo?.lanIpv4Addresses.length ?? 0) === 0 ? (
-          <p className="text-[11px] text-slate-500">
-            No LAN address detected. Use the URL printed by the agent script.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {agentInfo!.lanIpv4Addresses.map((ip) => {
-              const url = `http://${ip}:${agentInfo!.httpPort}/`;
-              return (
-                <div key={ip} className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200/90 rounded-xl px-3 py-2 hover:border-slate-300 transition">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Smartphone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="font-mono text-xs font-semibold text-cyan-800 truncate">{url}</span>
+        {/* 1-Click Cloud Tunnel Section */}
+        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-cyan-950 rounded-2xl p-4 text-white shadow-md relative overflow-hidden">
+          <div className="flex items-start justify-between gap-3 relative z-10">
+            <div>
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-cyan-400" />
+                <h5 className="font-bold text-sm tracking-tight text-white">1-Click Cloud Access (Any Network)</h5>
+              </div>
+              <p className="text-[11px] text-slate-300 mt-1 max-w-sm">
+                Connect your phone from anywhere (4G, 5G, mobile data, or classroom Wi-Fi) with zero configuration.
+              </p>
+            </div>
+            <button
+              onClick={handleToggleTunnel}
+              disabled={tunnelLoading}
+              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition shadow-sm shrink-0 active:scale-95 disabled:opacity-50 ${
+                tunnelStatus?.active
+                  ? 'bg-rose-500 hover:bg-rose-600 text-white'
+                  : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black'
+              }`}
+            >
+              {tunnelLoading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Connecting...</span>
+                </>
+              ) : tunnelStatus?.active ? (
+                <>
+                  <Power className="w-3.5 h-3.5" />
+                  <span>Stop Tunnel</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Enable Remote Access</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {tunnelStatus?.active && tunnelStatus.url && (
+            <div className="mt-4 pt-3.5 border-t border-slate-700/60 flex flex-col sm:flex-row items-center gap-4 relative z-10">
+              {/* QR Code Container */}
+              {tunnelQrCode && (
+                <div className="bg-white p-2 rounded-xl shadow-lg shrink-0 flex flex-col items-center">
+                  <img src={tunnelQrCode} alt="Scan QR for Mobile Access" className="w-32 h-32 rounded-lg" />
+                  <span className="text-[9px] font-bold text-slate-600 mt-1 flex items-center gap-1">
+                    <QrCode className="w-3 h-3 text-cyan-600" /> Scan with Phone
+                  </span>
+                </div>
+              )}
+
+              {/* URL & Action buttons */}
+              <div className="space-y-2.5 flex-1 min-w-0 w-full text-center sm:text-left">
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-cyan-300">Secure Live URL</span>
+                  <div className="mt-1 bg-slate-950/80 border border-cyan-500/30 rounded-xl px-3 py-2 font-mono text-xs text-cyan-200 truncate select-all">
+                    {tunnelStatus.url}
                   </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
                   <button
-                    onClick={() => copy(url)}
-                    className="flex items-center gap-1 text-[11px] font-semibold py-1 px-2.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 active:scale-95 transition shrink-0 shadow-2xs"
-                    title="Copy URL"
+                    onClick={() => copyTunnel(tunnelStatus.url!)}
+                    className="flex items-center gap-1 text-[11px] font-semibold py-1.5 px-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white active:scale-95 transition"
                   >
-                    {copiedIp === url ? (
+                    {copiedTunnelUrl ? (
                       <>
-                        <Check className="w-3 h-3 text-emerald-600" />
-                        <span className="text-emerald-700 font-bold">Copied!</span>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-300 font-bold">Copied!</span>
                       </>
                     ) : (
                       <>
-                        <Copy className="w-3 h-3 text-slate-400" />
-                        <span>Copy</span>
+                        <Copy className="w-3.5 h-3.5 text-cyan-300" />
+                        <span>Copy URL</span>
                       </>
                     )}
                   </button>
+                  <a
+                    href={tunnelStatus.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 text-[11px] font-semibold py-1.5 px-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white active:scale-95 transition"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open Live App</span>
+                  </a>
                 </div>
-              );
-            })}
+                <p className="text-[10px] text-slate-400">
+                  Tip: Point your phone camera at the QR code to open the dashboard immediately.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {tunnelStatus?.message && !tunnelStatus.active && (
+            <div className="mt-2 text-[11px] text-amber-300 bg-amber-950/40 border border-amber-500/30 rounded-lg p-2 flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>{tunnelStatus.message}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Same WiFi (LAN) Section as alternative */}
+        <div className="space-y-2 pt-1">
+          <div className="flex items-center justify-between text-[11px] font-semibold text-slate-700">
+            <span className="flex items-center gap-1.5">
+              <Wifi className="w-3.5 h-3.5 text-slate-400" />
+              <span>Local Wi-Fi Network (Same Router Only)</span>
+            </span>
+            <span className="font-mono text-[10px] text-slate-500">Port {agentInfo?.httpPort || 5200}</span>
           </div>
-        )}
+
+          {(agentInfo?.lanIpv4Addresses.length ?? 0) === 0 ? (
+            <p className="text-[11px] text-slate-500">No LAN IP detected.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {agentInfo!.lanIpv4Addresses.map((ip) => {
+                const url = `http://${ip}:${agentInfo!.httpPort}/`;
+                return (
+                  <div
+                    key={ip}
+                    className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200/90 rounded-xl px-3 py-1.5 hover:border-slate-300 transition"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Smartphone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span className="font-mono text-xs font-semibold text-slate-700 truncate">{url}</span>
+                    </div>
+                    <button
+                      onClick={() => copy(url)}
+                      className="flex items-center gap-1 text-[11px] font-semibold py-1 px-2.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 active:scale-95 transition shrink-0 shadow-2xs"
+                    >
+                      {copiedIp === url ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span className="text-emerald-700 font-bold">Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3 text-slate-400" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </Card>
 
       {/* Bandwidth & Upload Schedule */}
@@ -1062,6 +1435,18 @@ export function ControlsScreen({
       </Card>
     </div>
   </div>
+
+  {/* Media Preview Modal (File & Lecture Video/PDF) */}
+  <MediaPreviewModal
+    open={Boolean(previewFile || previewLecture)}
+    onClose={() => {
+      setPreviewFile(null);
+      setPreviewLecture(null);
+    }}
+    file={previewFile || undefined}
+    lecture={previewLecture || undefined}
+  />
+
 </div>
   );
 }

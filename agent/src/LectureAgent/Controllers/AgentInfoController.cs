@@ -37,6 +37,7 @@ public sealed class AgentInfoController : ControllerBase
             DeviceId = _configuration["Agent:DeviceId"] ?? "",
             MachineName = Environment.MachineName,
             MonitorFolder = monitorFolder,
+            NotesFolder = FileMonitoringService.ResolveOptionalFolder(_configuration["FileWatcher:NotesFolder"]) ?? "",
             FileWatcherEnabled = bool.TryParse(_configuration["FileWatcher:EnableFileWatcher"], out var watcherEnabled) && watcherEnabled,
             GoogleDriveEnabled = bool.TryParse(_configuration["GoogleDrive:Enabled"], out var driveEnabled) && driveEnabled,
             DriveRootFolder = _configuration["GoogleDrive:RootFolderPath"] ?? "",
@@ -49,7 +50,8 @@ public sealed class AgentInfoController : ControllerBase
             UptimeSeconds = (long)(DateTime.UtcNow - _controlState.StartedAtUtc).TotalSeconds,
             UploadsPaused = _controlState.UploadsPaused,
             MonitoringPaused = _controlState.MonitoringPaused,
-            TimetableSyncPaused = _controlState.TimetableSyncPaused
+            TimetableSyncPaused = _controlState.TimetableSyncPaused,
+            YouTubeEnabled = bool.TryParse(_configuration["YouTube:Enabled"], out var ytEnabled) && ytEnabled
         });
     }
 
@@ -101,6 +103,7 @@ public sealed class AgentInfoDto
     public string DeviceId { get; set; } = "";
     public string MachineName { get; set; } = "";
     public string MonitorFolder { get; set; } = "";
+    public string NotesFolder { get; set; } = "";
     public bool FileWatcherEnabled { get; set; }
     public bool GoogleDriveEnabled { get; set; }
     public string DriveRootFolder { get; set; } = "";
@@ -114,4 +117,5 @@ public sealed class AgentInfoDto
     public bool UploadsPaused { get; set; }
     public bool MonitoringPaused { get; set; }
     public bool TimetableSyncPaused { get; set; }
+    public bool YouTubeEnabled { get; set; }
 }

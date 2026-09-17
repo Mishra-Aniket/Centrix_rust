@@ -25,7 +25,8 @@ public sealed class GoogleDriveUploader : IGoogleDriveUploader
     private readonly ILogger<GoogleDriveUploader> _logger;
     private readonly ICredentialProtector _protector;
     private readonly SemaphoreSlim _initializationLock = new(1, 1);
-    private readonly ConcurrentDictionary<string, string> _folderIdCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly SemaphoreSlim _folderCreationLock = new(1, 1);
+    private static readonly ConcurrentDictionary<string, string> _folderIdCache = new(StringComparer.OrdinalIgnoreCase);
     private DriveService? _driveService;
 
     public GoogleDriveUploader(
@@ -55,14 +56,69 @@ public sealed class GoogleDriveUploader : IGoogleDriveUploader
 
         var service = await GetDriveServiceAsync();
         var folderId = await ResolveOrCreateFolderPathAsync(service, entry.DriveFolderPath);
+        var targetFileName = entry.DriveFileName;
+        if (string.IsNullOrWhiteSpace(targetFileName))
+        {
+            var localFileName = Path.GetFileName(entry.LocalFilePath);
+            var baseName = Path.GetFileNameWithoutExtension(localFileName);
+            var isUuid = Guid.TryParse(baseName, out _) || System.Text.RegularExpressions.Regex.IsMatch(baseName, @"^[0-9a-fA-F-]{32,}$");
+            if (isUuid && !string.IsNullOrWhiteSpace(entry.DriveFolderPath))
+            {
+                var ext = Path.GetExtension(localFileName);
+                var parts = entry.DriveFolderPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+                var batchPart = parts.Length > 0 ? parts[0].Trim() : "Batch";
+                var subjectPart = parts.Length > 1 ? parts[1].Trim() : (entry.FileType.Equals("PDF", StringComparison.OrdinalIgnoreCase) ? "Notes" : "Lecture");
+                var typeTag = entry.FileType.Equals("PDF", StringComparison.OrdinalIgnoreCase) ? "Notes" : "Lecture";
+                targetFileName = $"{batchPart}_{subjectPart}_{typeTag}{ext}";
+            }
+            else
+            {
+                targetFileName = localFileName;
+            }
+        }
+        var mimeType = GetMimeType(entry);
+
+        // 1. Check if a file with the exact same name already exists in target folderId on Drive
+        var existingFile = await FindExistingFileInFolderAsync(service, targetFileName, folderId);
+        if (existingFile != null && !string.IsNullOrWhiteSpace(existingFile.Id))
+        {
+            var localInfo = new FileInfo(entry.LocalFilePath);
+            // If the existing file has identical length, skip redundant duplicate upload!
+            if (existingFile.Size.HasValue && existingFile.Size.Value == localInfo.Length)
+            {
+                _logger.LogInformation("File '{FileName}' already exists in Drive folder (ID: {FileId}, Size: {Size} bytes). Reusing existing file without duplicate upload.",
+                    targetFileName, existingFile.Id, existingFile.Size.Value);
+                _progressStore.Set(entry.QueueEntryId, localInfo.Length);
+                return existingFile.Id;
+            }
+
+            // If file was updated/modified, update the existing file in-place instead of creating a duplicate!
+            _logger.LogInformation("Updating existing Drive file '{FileName}' (ID: {FileId}) in-place...",
+                targetFileName, existingFile.Id);
+            await using var updateStream = new FileStream(entry.LocalFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var updateUpload = service.Files.Update(new Google.Apis.Drive.v3.Data.File(), existingFile.Id, updateStream, mimeType);
+            updateUpload.Fields = "id, name, size";
+            updateUpload.SupportsAllDrives = true;
+            updateUpload.ChunkSize = ResumableUpload.MinimumChunkSize * 4;
+            updateUpload.ProgressChanged += progress =>
+                _progressStore.Set(entry.QueueEntryId, progress.BytesSent);
+
+            var updateProgress = await updateUpload.UploadAsync(cancellationToken);
+            if (updateProgress.Status != UploadStatus.Completed || string.IsNullOrWhiteSpace(updateUpload.ResponseBody?.Id))
+                throw new IOException($"Google Drive file update failed with status {updateProgress.Status}: {updateProgress.Exception?.Message}");
+
+            return updateUpload.ResponseBody.Id;
+        }
+
+        // 2. Otherwise create new file on Drive
         var metadata = new Google.Apis.Drive.v3.Data.File
         {
-            Name = entry.DriveFileName ?? Path.GetFileName(entry.LocalFilePath),
+            Name = targetFileName,
             Parents = new[] { folderId }
         };
 
         await using var stream = new FileStream(entry.LocalFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        var upload = service.Files.Create(metadata, stream, GetMimeType(entry));
+        var upload = service.Files.Create(metadata, stream, mimeType);
         upload.Fields = "id, name, size";
         upload.SupportsAllDrives = true;
         upload.ChunkSize = ResumableUpload.MinimumChunkSize * 4;
@@ -74,6 +130,32 @@ public sealed class GoogleDriveUploader : IGoogleDriveUploader
             throw new IOException($"Google Drive upload failed with status {uploadProgress.Status}: {uploadProgress.Exception?.Message}");
 
         return upload.ResponseBody.Id;
+    }
+
+    private async Task<Google.Apis.Drive.v3.Data.File?> FindExistingFileInFolderAsync(
+        DriveService service, string fileName, string folderId)
+    {
+        try
+        {
+            var escapedName = EscapeDriveQuery(fileName.Trim());
+            var listReq = service.Files.List();
+            listReq.Q = $"name = '{escapedName}' and '{folderId}' in parents and trashed = false";
+            listReq.SupportsAllDrives = true;
+            listReq.IncludeItemsFromAllDrives = true;
+            listReq.Spaces = "drive";
+            listReq.Fields = "files(id, name, size, md5Checksum, createdTime)";
+            listReq.OrderBy = "createdTime desc";
+            listReq.PageSize = 5;
+
+            var res = await listReq.ExecuteAsync();
+            return res.Files?.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Error checking for existing file '{FileName}' in folder '{FolderId}': {Message}",
+                fileName, folderId, ex.Message);
+            return null;
+        }
     }
 
     public async Task<bool> VerifyUploadAsync(string fileId, string expectedHash)
@@ -173,6 +255,24 @@ public sealed class GoogleDriveUploader : IGoogleDriveUploader
             .Distinct()
             .OrderBy(n => n)
             .ToList() ?? new List<string>();
+    }
+
+    public async Task<Stream> OpenDownloadStreamAsync(string fileId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(fileId))
+            throw new ArgumentException("Drive file ID cannot be null or whitespace", nameof(fileId));
+
+        var service = await GetDriveServiceAsync();
+        var downloadUrl = $"https://www.googleapis.com/drive/v3/files/{fileId}?alt=media";
+        _logger.LogInformation("Opening live streaming download from Google Drive for file ID {FileId}", fileId);
+
+        var response = await service.HttpClient.GetAsync(
+            downloadUrl,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStreamAsync(cancellationToken);
     }
 
     private async Task<DriveService> GetDriveServiceAsync()
@@ -337,69 +437,84 @@ public sealed class GoogleDriveUploader : IGoogleDriveUploader
 
     private async Task<string> GetOrCreateFolderSegmentAsync(DriveService service, string segmentName, string parentId, bool isFirstSegment = false)
     {
-        var cacheKey = $"{parentId}:{segmentName}";
+        var cacheKey = $"{parentId}:{segmentName.Trim()}";
         if (_folderIdCache.TryGetValue(cacheKey, out var cachedId))
         {
             return cachedId;
         }
 
-        // 1. Try finding existing folder under parentId
-        var existingId = await FindExistingFolderUnderParentAsync(service, segmentName, parentId);
-        if (!string.IsNullOrWhiteSpace(existingId))
+        await _folderCreationLock.WaitAsync();
+        try
         {
-            _folderIdCache[cacheKey] = existingId;
-            return existingId;
-        }
-
-        // 2. If parent is "root" OR this is the first segment (batch folder like 27-AJ451NA 2026),
-        // search globally on Google Drive so nested folders under Shift/Program are found automatically!
-        if (parentId.Equals("root", StringComparison.OrdinalIgnoreCase) || isFirstSegment)
-        {
-            var globalId = await FindExistingFolderGlobalAsync(service, segmentName);
-            if (!string.IsNullOrWhiteSpace(globalId))
+            // Double-check cache inside lock to prevent parallel workers from duplicate-creating
+            if (_folderIdCache.TryGetValue(cacheKey, out cachedId))
             {
-                _folderIdCache[cacheKey] = globalId;
-                return globalId;
+                return cachedId;
             }
+
+            // 1. Try finding existing folder under parentId
+            var existingId = await FindExistingFolderUnderParentAsync(service, segmentName, parentId);
+            if (!string.IsNullOrWhiteSpace(existingId))
+            {
+                _folderIdCache[cacheKey] = existingId;
+                return existingId;
+            }
+
+            // 2. If parent is "root" OR this is the first segment (batch folder like 27-AJ451NA 2026),
+            // search globally on Google Drive so nested folders under Shift/Program are found automatically!
+            if (parentId.Equals("root", StringComparison.OrdinalIgnoreCase) || isFirstSegment)
+            {
+                var globalId = await FindExistingFolderGlobalAsync(service, segmentName);
+                if (!string.IsNullOrWhiteSpace(globalId))
+                {
+                    _folderIdCache[cacheKey] = globalId;
+                    return globalId;
+                }
+            }
+
+            // 3. Auto-create folder on Google Drive
+            var autoCreate = _configuration.GetValue("GoogleDrive:AutoCreateFolders", true);
+            if (!autoCreate)
+            {
+                throw new InvalidOperationException(
+                    $"Drive folder '{segmentName}' not found and AutoCreateFolders is disabled.");
+            }
+
+            var folderMetadata = new Google.Apis.Drive.v3.Data.File
+            {
+                Name = segmentName.Trim(),
+                MimeType = "application/vnd.google-apps.folder",
+                Parents = new[] { parentId }
+            };
+
+            var createRequest = service.Files.Create(folderMetadata);
+            createRequest.SupportsAllDrives = true;
+            createRequest.Fields = "id, name, parents";
+
+            var createdFolder = await createRequest.ExecuteAsync();
+            if (createdFolder == null || string.IsNullOrWhiteSpace(createdFolder.Id))
+            {
+                throw new IOException($"Failed to create Drive folder '{segmentName}' under parent '{parentId}'.");
+            }
+
+            _logger.LogInformation("Auto-created Google Drive folder '{FolderName}' (ID: {FolderId}) under parent {ParentId}",
+                segmentName, createdFolder.Id, parentId);
+
+            _folderIdCache[cacheKey] = createdFolder.Id;
+            return createdFolder.Id;
         }
-
-        // 3. Auto-create folder on Google Drive
-        var autoCreate = _configuration.GetValue("GoogleDrive:AutoCreateFolders", true);
-        if (!autoCreate)
+        finally
         {
-            throw new InvalidOperationException(
-                $"Drive folder '{segmentName}' not found and AutoCreateFolders is disabled.");
+            _folderCreationLock.Release();
         }
-
-        var folderMetadata = new Google.Apis.Drive.v3.Data.File
-        {
-            Name = segmentName,
-            MimeType = "application/vnd.google-apps.folder",
-            Parents = new[] { parentId }
-        };
-
-        var createRequest = service.Files.Create(folderMetadata);
-        createRequest.SupportsAllDrives = true;
-        createRequest.Fields = "id, name, parents";
-
-        var createdFolder = await createRequest.ExecuteAsync();
-        if (createdFolder == null || string.IsNullOrWhiteSpace(createdFolder.Id))
-        {
-            throw new IOException($"Failed to create Drive folder '{segmentName}' under parent '{parentId}'.");
-        }
-
-        _logger.LogInformation("Auto-created Google Drive folder '{FolderName}' (ID: {FolderId}) under parent {ParentId}",
-            segmentName, createdFolder.Id, parentId);
-
-        _folderIdCache[cacheKey] = createdFolder.Id;
-        return createdFolder.Id;
     }
 
     private async Task<string?> FindExistingFolderUnderParentAsync(DriveService service, string segmentName, string parentId)
     {
         try
         {
-            var escapedName = EscapeDriveQuery(segmentName);
+            var cleanName = segmentName.Trim();
+            var escapedName = EscapeDriveQuery(cleanName);
             var parentFilter = parentId.Equals("root", StringComparison.OrdinalIgnoreCase)
                 ? "'root' in parents"
                 : $"'{parentId}' in parents";
@@ -409,13 +524,19 @@ public sealed class GoogleDriveUploader : IGoogleDriveUploader
             listRequest.SupportsAllDrives = true;
             listRequest.IncludeItemsFromAllDrives = true;
             listRequest.Spaces = "drive";
-            listRequest.Fields = "files(id, name)";
-            listRequest.PageSize = 5;
+            listRequest.Fields = "files(id, name, createdTime)";
+            listRequest.OrderBy = "createdTime desc";
+            listRequest.PageSize = 10;
 
             var result = await listRequest.ExecuteAsync();
             var exactMatch = result.Files?.FirstOrDefault();
             if (exactMatch != null && !string.IsNullOrWhiteSpace(exactMatch.Id))
             {
+                if (result.Files!.Count > 1)
+                {
+                    _logger.LogWarning("Found {Count} folders named '{Name}' under '{Parent}'. Using newest folder ID '{FolderId}' to avoid creating another duplicate.",
+                        result.Files.Count, cleanName, parentId, exactMatch.Id);
+                }
                 return exactMatch.Id;
             }
 
@@ -425,22 +546,23 @@ public sealed class GoogleDriveUploader : IGoogleDriveUploader
             flexibleListRequest.SupportsAllDrives = true;
             flexibleListRequest.IncludeItemsFromAllDrives = true;
             flexibleListRequest.Spaces = "drive";
-            flexibleListRequest.Fields = "files(id, name)";
-            flexibleListRequest.PageSize = 100;
+            flexibleListRequest.Fields = "files(id, name, createdTime)";
+            flexibleListRequest.OrderBy = "createdTime desc";
+            flexibleListRequest.PageSize = 200;
 
             var allChildren = await flexibleListRequest.ExecuteAsync();
             if (allChildren.Files != null)
             {
-                var normalizedTarget = NormalizeFolderName(segmentName);
+                var normalizedTarget = NormalizeFolderName(cleanName);
                 var match = allChildren.Files.FirstOrDefault(f =>
-                    string.Equals(f.Name?.Trim(), segmentName.Trim(), StringComparison.OrdinalIgnoreCase)
+                    string.Equals(f.Name?.Trim(), cleanName, StringComparison.OrdinalIgnoreCase)
                     || NormalizeFolderName(f.Name) == normalizedTarget
-                    || AreSubjectNamesMatching(f.Name ?? "", segmentName));
+                    || AreSubjectNamesMatching(f.Name ?? "", cleanName));
 
                 if (match != null && !string.IsNullOrWhiteSpace(match.Id))
                 {
                     _logger.LogInformation("Matched Drive folder '{FolderName}' (ID: {FolderId}) via flexible name matching for '{TargetName}'",
-                        match.Name, match.Id, segmentName);
+                        match.Name, match.Id, cleanName);
                     return match.Id;
                 }
             }
@@ -553,13 +675,29 @@ public sealed class GoogleDriveUploader : IGoogleDriveUploader
         if (norm1 == norm2) return true;
         if (string.IsNullOrEmpty(norm1) || string.IsNullOrEmpty(norm2)) return false;
 
-        // Subject alias pairs (PW Vidyapeeth / JEE / NEET standard subjects)
+        // Specialized chemistry branches (inorganic must precede organic because "inorganic" contains "organic")
+        bool isInorg1 = norm1.Contains("inorganic") || norm1 == "ioc";
+        bool isInorg2 = norm2.Contains("inorganic") || norm2 == "ioc";
+        if (isInorg1 || isInorg2) return isInorg1 && isInorg2;
+
+        bool isOrg1 = (norm1.Contains("organic") && !norm1.Contains("inorganic")) || norm1 == "oc";
+        bool isOrg2 = (norm2.Contains("organic") && !norm2.Contains("inorganic")) || norm2 == "oc";
+        if (isOrg1 || isOrg2) return isOrg1 && isOrg2;
+
+        bool isPhysChem1 = norm1.Contains("physicalchem") || norm1 == "pc";
+        bool isPhysChem2 = norm2.Contains("physicalchem") || norm2 == "pc";
+        if (isPhysChem1 || isPhysChem2) return isPhysChem1 && isPhysChem2;
+
+        // Subject alias pairs (PW Vidyapeeth / JEE / NEET / Foundation standard subjects)
         if ((norm1.StartsWith("math") || norm1.StartsWith("mathem")) && (norm2.StartsWith("math") || norm2.StartsWith("mathem"))) return true;
         if (norm1.StartsWith("chem") && norm2.StartsWith("chem")) return true;
         if (norm1.StartsWith("phy") && norm2.StartsWith("phy")) return true;
         if (norm1.StartsWith("bio") && norm2.StartsWith("bio")) return true;
         if (norm1.StartsWith("bot") && norm2.StartsWith("bot")) return true;
         if (norm1.StartsWith("zoo") && norm2.StartsWith("zoo")) return true;
+        if ((norm1.Contains("social") || norm1 == "sst") && (norm2.Contains("social") || norm2 == "sst")) return true;
+        if ((norm1.Contains("mental") || norm1 == "mat") && (norm2.Contains("mental") || norm2 == "mat")) return true;
+        if ((norm1.Contains("computer") || norm1 == "cs") && (norm2.Contains("computer") || norm2 == "cs")) return true;
 
         if (norm1.Length >= 3 && norm2.Length >= 3)
         {

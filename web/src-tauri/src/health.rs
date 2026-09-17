@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 /// System health information returned to the frontend
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SystemHealth {
     pub cpu_usage_percent: f32,
     pub ram_total_bytes: u64,

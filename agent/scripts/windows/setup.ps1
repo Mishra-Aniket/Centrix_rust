@@ -1,4 +1,4 @@
-# LectureAgent first-run setup wizard (Windows PowerShell 5.1 compatible)
+# Centrix first-run setup wizard (Windows PowerShell 5.1 compatible)
 # Asks for all settings at install time so no config file editing is needed.
 $ErrorActionPreference = "Stop"
 $dir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -9,7 +9,7 @@ $json = Get-Content $settingsPath -Raw | ConvertFrom-Json
 
 Write-Host ""
 Write-Host "==============================================="
-Write-Host "        LectureAgent First-Time Setup"
+Write-Host "        Centrix First-Time Setup"
 Write-Host "   (Just press Enter to accept the [default])"
 Write-Host "==============================================="
 Write-Host ""
@@ -150,7 +150,7 @@ Write-Host "   Phone / MaxHub    : http://$ipText`:5200/"
 Write-Host "   API key           : (saved in DASHBOARD-ACCESS.txt)"
 Write-Host "==============================================="
 Write-Host ""
-Write-Host "NOTE: If Windows asks 'Allow LectureAgent to communicate on the"
+Write-Host "NOTE: If Windows asks 'Allow Centrix to communicate on the"
 Write-Host "network?' - click ALLOW (needed for phone/MaxHub access)."
 Write-Host ""
 Write-Host "Now run run-agent.bat and drop a test file into the data folder to verify your first upload."

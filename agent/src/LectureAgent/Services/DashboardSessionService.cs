@@ -142,6 +142,113 @@ public sealed class DashboardSessionService
 
     public List<string> GetAllowedDomains() => SplitList(_configuration["Auth:GoogleLogin:AllowedDomains"]);
 
+    // ----- YouTube OAuth ----------------------------------------------------
+
+    public string ResolveYouTubeTokenPath()
+    {
+        var path = _configuration["YouTube:TokenPath"] ?? "data/youtube-token";
+        return Path.IsPathRooted(path) ? path : Path.Combine(AppContext.BaseDirectory, path);
+    }
+
+    public bool IsYouTubeConnected()
+    {
+        var tokenDir = ResolveYouTubeTokenPath();
+        var tokenFile = Path.Combine(tokenDir, "Google.Apis.Auth.OAuth2.Responses.TokenResponse-lecture-agent-youtube");
+        return File.Exists(tokenFile);
+    }
+
+    public GoogleLoginFlow StartYouTubeAuth(string redirectUri)
+    {
+        var (clientId, _) = ReadClientSecrets();
+        var flowId = "yt_" + RandomToken(16);
+        var consentUrl = "https://accounts.google.com/o/oauth2/v2/auth"
+            + "?client_id=" + Uri.EscapeDataString(clientId)
+            + "&redirect_uri=" + Uri.EscapeDataString(redirectUri)
+            + "&response_type=code"
+            + "&scope=" + Uri.EscapeDataString("https://www.googleapis.com/auth/youtube.upload")
+            + "&access_type=offline"
+            + "&prompt=consent"
+            + "&state=" + Uri.EscapeDataString(flowId);
+
+        _flows[flowId] = null;
+        _flowCreated[flowId] = DateTime.UtcNow;
+        CleanupFlows();
+        return new GoogleLoginFlow(flowId, consentUrl, DateTime.UtcNow);
+    }
+
+    public async Task<(bool Success, string? Error)> CompleteYouTubeAuthAsync(string flowId, string code, string redirectUri)
+    {
+        var (clientId, clientSecret) = ReadClientSecrets();
+        try
+        {
+            using var tokenRequest = new HttpRequestMessage(HttpMethod.Post, "https://oauth2.googleapis.com/token")
+            {
+                Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["code"] = code,
+                    ["client_id"] = clientId,
+                    ["client_secret"] = clientSecret,
+                    ["redirect_uri"] = redirectUri,
+                    ["grant_type"] = "authorization_code"
+                })
+            };
+
+            using var client = _httpClientFactory.CreateClient("DashboardAuth");
+            using var tokenResponse = await client.SendAsync(tokenRequest);
+            var body = await tokenResponse.Content.ReadAsStringAsync();
+            if (!tokenResponse.IsSuccessStatusCode)
+            {
+                return (false, $"Google rejected YouTube authorization: {Truncate(body, 160)}");
+            }
+
+            var tokenJson = JsonSerializer.Deserialize<JsonElement>(body);
+            var accessToken = tokenJson.TryGetProperty("access_token", out var at) ? at.GetString() : null;
+            var refreshToken = tokenJson.TryGetProperty("refresh_token", out var rt) ? rt.GetString() : null;
+            var expiresIn = tokenJson.TryGetProperty("expires_in", out var ei) ? ei.GetInt32() : 3599;
+
+            if (string.IsNullOrWhiteSpace(refreshToken))
+            {
+                var existingFile = Path.Combine(ResolveYouTubeTokenPath(), "Google.Apis.Auth.OAuth2.Responses.TokenResponse-lecture-agent-youtube");
+                if (File.Exists(existingFile))
+                {
+                    var existingDoc = JsonDocument.Parse(File.ReadAllText(existingFile));
+                    if (existingDoc.RootElement.TryGetProperty("refresh_token", out var existingRt))
+                    {
+                        refreshToken = existingRt.GetString();
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                return (false, "Google did not return an access token.");
+            }
+
+            var tokenDir = ResolveYouTubeTokenPath();
+            Directory.CreateDirectory(tokenDir);
+            var tokenFile = Path.Combine(tokenDir, "Google.Apis.Auth.OAuth2.Responses.TokenResponse-lecture-agent-youtube");
+
+            var now = DateTime.UtcNow;
+            var tokenData = new Dictionary<string, object?>
+            {
+                ["access_token"] = accessToken,
+                ["token_type"] = "Bearer",
+                ["expires_in"] = expiresIn,
+                ["refresh_token"] = refreshToken,
+                ["scope"] = "https://www.googleapis.com/auth/youtube.upload",
+                ["Issued"] = DateTime.Now.ToString("o"),
+                ["IssuedUtc"] = now.ToString("o")
+            };
+
+            await File.WriteAllTextAsync(tokenFile, JsonSerializer.Serialize(tokenData, new JsonSerializerOptions { WriteIndented = true }));
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
     // ----- login flows ------------------------------------------------------
 
     public GoogleLoginFlow StartLogin(string redirectUri)

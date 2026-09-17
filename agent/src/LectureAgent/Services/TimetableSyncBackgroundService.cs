@@ -34,8 +34,16 @@ public sealed class TimetableSyncBackgroundService : BackgroundService
         var intervalMinutes = _config.GetValue<int>("GoogleSheet:SyncIntervalMinutes", 5);
         _logger.LogInformation("TimetableSyncBackgroundService initialized with interval: {IntervalMinutes}m", intervalMinutes);
 
-        // Initial delay to let Kestrel and DB start
-        await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+        // Initial delay to let Kestrel and DB start. Cancelled while the host is
+        // still starting (e.g. the port is taken) must not look like a crash.
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
 
         while (!stoppingToken.IsCancellationRequested)
         {

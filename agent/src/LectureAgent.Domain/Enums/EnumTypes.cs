@@ -62,6 +62,59 @@ public enum MatchingDecision
 }
 
 /// <summary>
+/// Persisted match status on a lecture session entity.
+/// </summary>
+public enum MatchStatus
+{
+    Pending = 1,
+    Matched = 2,
+    NoMatch = 3
+}
+
+/// <summary>
+/// Specific failure reason when matching fails.
+/// </summary>
+public enum MatchFailureCode
+{
+    None = 0,
+    TopicNotFound = 1,
+    LectureNumberMissing = 2,
+    BatchSubjectMissing = 3,
+    HomeworkNotFound = 4,
+    ExerciseNotFound = 5,
+    NoTimetableSlots = 6,
+    TimeOverlapFailed = 7,
+    LowConfidence = 8
+}
+
+/// <summary>
+/// Lifecycle of a lecture's YouTube publishing request.
+/// </summary>
+public enum YouTubePublishStatus
+{
+    NotPublished = 1,
+    PublishQueued = 2,
+    Publishing = 3,
+    Published = 4,
+    UnpublishQueued = 5,
+    Unpublishing = 6,
+    Unpublished = 7,
+    Failed = 8,
+    CloudPublishQueued = 9,
+    CloudPublishing = 10
+}
+
+/// <summary>
+/// Result of the local quality-control inspection.
+/// </summary>
+public enum QcStatus
+{
+    Pending = 1,
+    Passed = 2,
+    Failed = 3
+}
+
+/// <summary>
 /// Device status in the system.
 /// </summary>
 public enum DeviceStatus

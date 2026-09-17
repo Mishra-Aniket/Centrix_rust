@@ -8,7 +8,7 @@ namespace LectureAgent.Tests;
 
 public class ApiKeyMiddlewareTests
 {
-    private static async Task<(int StatusCode, bool NextCalled)> InvokeAsync(string path, bool authEnabled, string? suppliedKey = null)
+    private static async Task<(int StatusCode, bool NextCalled)> InvokeAsync(string path, bool authEnabled, string? suppliedKey = null, System.Net.IPAddress? remoteIp = null)
     {
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -27,6 +27,10 @@ public class ApiKeyMiddlewareTests
 
         var context = new DefaultHttpContext();
         context.Request.Path = path;
+        if (remoteIp != null)
+        {
+            context.Connection.RemoteIpAddress = remoteIp;
+        }
         if (suppliedKey != null)
         {
             context.Request.Headers["X-Agent-Key"] = suppliedKey;
@@ -83,6 +87,32 @@ public class ApiKeyMiddlewareTests
     public async Task Everything_PassesThrough_WhenAuthDisabled()
     {
         var result = await InvokeAsync("/api/lectures", authEnabled: false);
+        Assert.True(result.NextCalled);
+        Assert.Equal(StatusCodes.Status200OK, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Loopback_PassesWithoutKey_EvenWhenAuthEnabled()
+    {
+        var result = await InvokeAsync("/api/monitor/snapshot", authEnabled: true, remoteIp: System.Net.IPAddress.Loopback);
+        Assert.True(result.NextCalled);
+        Assert.Equal(StatusCodes.Status200OK, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task RemoteLan_BlockedWithoutKey_EvenWhenAuthDisabled()
+    {
+        var lanIp = System.Net.IPAddress.Parse("192.168.1.55");
+        var result = await InvokeAsync("/api/lectures", authEnabled: false, remoteIp: lanIp);
+        Assert.False(result.NextCalled);
+        Assert.Equal(StatusCodes.Status401Unauthorized, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task RemoteLan_AllowedWithValidKey()
+    {
+        var lanIp = System.Net.IPAddress.Parse("192.168.1.55");
+        var result = await InvokeAsync("/api/lectures", authEnabled: false, suppliedKey: "test-key-123", remoteIp: lanIp);
         Assert.True(result.NextCalled);
         Assert.Equal(StatusCodes.Status200OK, result.StatusCode);
     }

@@ -9,13 +9,13 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
 
     <!-- Assembly versioning -->
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
-    <InformationalVersion>1.0.0-alpha</InformationalVersion>
+    <AssemblyVersion>1.0.4.0</AssemblyVersion>
+    <FileVersion>1.0.4.0</FileVersion>
+    <InformationalVersion>1.0.4</InformationalVersion>
 
     <!-- NuGet packaging -->
     <Authors>LASRS Team</Authors>
-    <Description>Lecture Automation &amp; Smart Review System - Cross-Platform Agent</Description>
+    <Description>Centrix - Cross-Platform Lecture Operations</Description>
     <PackageProjectUrl>https://github.com/lasrs/lecture-automation</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
@@ -27,6 +27,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.0" />
     
     <PackageReference Include="Google.Apis.Drive.v3" Version="1.68.0.3627" />
+    <PackageReference Include="Google.Apis.YouTube.v3" Version="1.68.0.3653" />
     <PackageReference Include="Google.Apis.Auth" Version="1.69.0" />
 
     <PackageReference Include="FirebaseAdmin" Version="2.4.1" />

@@ -31,6 +31,25 @@ public class LectureSession
     public int ConfidenceScore { get; set; } // 0-100
     public string? MatchingReason { get; set; } // JSON
 
+    // Match observability
+    public MatchStatus MatchStatus { get; set; } = MatchStatus.Pending;
+    public MatchFailureCode FailureCode { get; set; } = MatchFailureCode.None;
+    public string? FailureReason { get; set; }
+    public DateTime? MatchedAt { get; set; }
+    public int MatchAttempts { get; set; }
+
+    // YouTube publishing
+    public string? YouTubeId { get; set; }
+    public YouTubePublishStatus YouTubePublishStatus { get; set; } = YouTubePublishStatus.NotPublished;
+    public string? YouTubeThumbnailUrl { get; set; }
+    public string? YouTubeFailureReason { get; set; }
+    public DateTime? YouTubePublishedAt { get; set; }
+
+    // Quality control
+    public string? QcResults { get; set; } // JSON
+    public DateTime? QcPassedAt { get; set; }
+    public QcStatus QcStatus { get; set; } = QcStatus.Pending;
+
     // Files
     public string? VideoFileLocalPath { get; set; }
     public long? VideoFileSizeBytes { get; set; }

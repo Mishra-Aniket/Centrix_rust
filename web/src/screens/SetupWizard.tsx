@@ -22,7 +22,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [centerName, setCenterName] = useState('Pune - PCMC Vidyapeeth');
   const [roomId, setRoomId] = useState('');
   const [uploadToDrive, setUploadToDrive] = useState(true);
-  const [driveFolder, setDriveFolder] = useState('LectureRecordings');
+  const [driveFolder, setDriveFolder] = useState('');
   const [credentialsPath, setCredentialsPath] = useState('');
   
   // Summary State
@@ -60,7 +60,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           RootFolderPath: driveFolder 
         },
         Kestrel: { Endpoints: { Http: { Url: "http://0.0.0.0:5200" } } },
-        Database: { SqlitePath: "lecture_agent.db" }
+        Database: { SqlitePath: "centrix.db" }
       };
 
       await saveSettings(settings);
@@ -84,35 +84,37 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     }
   };
 
-  const btnPrimary = "px-8 py-2.5 bg-[#863bff] hover:bg-[#722cee] text-white font-semibold rounded-xl transition-all shadow-md shadow-[#863bff]/25 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2";
-  const btnSecondary = "px-6 py-2.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold border border-slate-300 rounded-xl transition-all shadow-xs active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2";
+  const btnPrimary = "px-6 py-2.5 bg-[var(--ink)] hover:opacity-90 text-[var(--cream)] font-mono text-xs uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2";
+  const btnSecondary = "px-6 py-2.5 bg-transparent hover:bg-[var(--paper)] text-[var(--ink)] font-mono text-xs uppercase tracking-wider border border-[var(--rule)] transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2";
 
   const steps = [
     // Step 0: Welcome
-    <div key="welcome" className="flex flex-col items-center justify-center text-center space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="w-24 h-24 bg-white rounded-2xl shadow-sm flex items-center justify-center p-4 border border-slate-100">
+    <div key="welcome" className="flex flex-col items-center justify-center text-center space-y-6 animate-in fade-in duration-300">
+      <div className="w-20 h-20 bg-[var(--paper)] border border-[var(--rule)] flex items-center justify-center p-3">
         <img src="/logo.png" alt="Centrix Logo" className="w-full h-full object-contain" />
       </div>
       
       <div className="space-y-2">
-        <h1 className="text-2xl font-bold text-slate-900">Welcome to Centrix</h1>
-        <p className="text-slate-500 max-w-sm mx-auto">This small app turns this PC into an automatic lecture uploader.</p>
+        <div className="font-mono text-[10px] text-[var(--stone)] uppercase tracking-wider">Installer & Daemon Setup</div>
+        <h1 className="font-serif text-3xl font-normal text-[var(--ink)] tracking-tight">Centrix Setup</h1>
+        <p className="text-[var(--stone)] text-xs font-mono max-w-sm mx-auto">Turn this PC into an automatic lecture capture and synchronization node.</p>
       </div>
 
-      <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-left w-full max-w-md space-y-4 shadow-sm">
-        <Feature icon={<Folder className="text-indigo-500" />} text="Watches classroom recording folders automatically" />
-        <Feature icon={<HardDrive className="text-indigo-500" />} text="Offline-first resilience: recordings buffer safely locally" />
-        <Feature icon={<Cloud className="text-indigo-500" />} text="Auto-syncs lectures to Google Drive" />
-        <Feature icon={<Monitor className="text-indigo-500" />} text="Live local dashboard on PC/phone/tablet" />
-        <Feature icon={<Play className="text-indigo-500" />} text="Runs 24×7 as silent background service" />
+      <div className="bg-[var(--paper)] p-6 border border-[var(--rule)] text-left w-full max-w-md space-y-3">
+        <Feature icon={<Folder className="text-[var(--stone)]" />} text="Watches classroom recording folders automatically" />
+        <Feature icon={<HardDrive className="text-[var(--stone)]" />} text="Offline-first resilience: recordings buffer safely locally" />
+        <Feature icon={<Cloud className="text-[var(--stone)]" />} text="Auto-syncs lectures to Google Drive" />
+        <Feature icon={<Monitor className="text-[var(--stone)]" />} text="Live local dashboard on PC/phone/tablet" />
+        <Feature icon={<Play className="text-[var(--stone)]" />} text="Runs 24×7 as silent background service" />
       </div>
 
       <button 
         type="button"
         onClick={handleNext} 
-        className="w-full max-w-md h-12 bg-[#863bff] hover:bg-[#722cee] text-white font-bold text-base rounded-xl transition-all shadow-lg shadow-[#863bff]/30 active:scale-95 cursor-pointer flex items-center justify-center"
+        className="w-full max-w-md py-3.5 bg-[var(--ink)] hover:opacity-90 text-[var(--cream)] font-mono text-xs uppercase tracking-wider cursor-pointer flex items-center justify-center gap-2"
       >
-        Get Started
+        <span>Get Started</span>
+        <span>→</span>
       </button>
     </div>,
 
@@ -120,7 +122,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     <div key="folder" className="animate-in fade-in slide-in-from-right-8 duration-300 space-y-6 max-w-md mx-auto w-full">
       <div className="space-y-1">
         <h2 className="text-xl font-bold text-slate-900">Where do class recordings appear?</h2>
-        <p className="text-[#78718d] text-sm">Select the folder where OBS or your camera saves video files.</p>
+        <p className="text-slate-500 text-sm">Select the folder where OBS or your camera saves video files.</p>
       </div>
 
       <div className="space-y-2">
@@ -131,7 +133,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             value={monitorFolder} 
             onChange={(e) => setMonitorFolder(e.target.value)}
             placeholder="e.g. /Users/aniketmishra/Movies or C:\Recordings" 
-            className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#863bff]/20 focus:border-[#863bff] outline-none transition font-mono text-xs text-slate-900"
+            className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 outline-none transition font-mono text-xs text-slate-900"
           />
           <button 
             type="button"
@@ -168,7 +170,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               type="text" 
               value={centerName}
               onChange={(e) => setCenterName(e.target.value)}
-              className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#863bff]/20 focus:border-[#863bff] outline-none transition"
+              className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 outline-none transition"
             />
           </div>
         </div>
@@ -182,14 +184,14 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               value={roomId}
               onChange={(e) => setRoomId(e.target.value)}
               placeholder="e.g. 603"
-              className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#863bff]/20 focus:border-[#863bff] outline-none transition font-mono uppercase"
+              className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 outline-none transition font-mono uppercase"
             />
           </div>
         </div>
 
-        <div className="bg-[#1b1033] p-4 rounded-xl text-center space-y-1 shadow-inner">
+        <div className="bg-slate-900 p-4 rounded-xl text-center space-y-1 shadow-inner">
           <p className="text-slate-400 text-xs uppercase tracking-wider font-semibold">Device ID Preview</p>
-          <p className="text-[#863bff] font-mono font-bold text-lg">PC-ROOM-{roomId || 'XXX'}</p>
+          <p className="text-cyan-400 font-mono font-bold text-lg">PC-ROOM-{roomId || 'XXX'}</p>
         </div>
       </div>
 
@@ -203,7 +205,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     <div key="drive" className="animate-in fade-in slide-in-from-right-8 duration-300 space-y-6 max-w-md mx-auto w-full">
       <div className="space-y-1">
         <h2 className="text-xl font-bold text-slate-900">Connect Google Drive</h2>
-        <p className="text-[#78718d] text-sm">Where should the recordings be uploaded?</p>
+        <p className="text-slate-500 text-sm">Where should the recordings be uploaded?</p>
       </div>
 
       <div className="space-y-5">
@@ -212,7 +214,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             type="checkbox" 
             checked={uploadToDrive} 
             onChange={(e) => setUploadToDrive(e.target.checked)}
-            className="w-5 h-5 text-[#863bff] rounded focus:ring-[#863bff]" 
+            className="w-5 h-5 text-cyan-600 rounded focus:ring-cyan-500" 
           />
           <span className="font-medium text-slate-800">Upload recordings to Google Drive</span>
         </label>
@@ -225,7 +227,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 type="text" 
                 value={driveFolder}
                 onChange={(e) => setDriveFolder(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#863bff]/20 focus:border-[#863bff] outline-none transition text-slate-900"
+                placeholder="Leave blank for Drive root (recommended if batch folders are at root)"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 outline-none transition text-slate-900"
               />
             </div>
 
@@ -268,11 +271,11 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     <div key="summary" className="animate-in fade-in slide-in-from-right-8 duration-300 space-y-6 max-w-md mx-auto w-full">
       <div className="space-y-1">
         <h2 className="text-xl font-bold text-slate-900">Ready to set up</h2>
-        <p className="text-[#78718d] text-sm">Review your settings before completing.</p>
+        <p className="text-slate-500 text-sm">Review your settings before completing.</p>
       </div>
 
-      <div className="bg-[#1b1033] p-4 rounded-xl shadow-inner overflow-hidden">
-        <pre className="text-[10px] sm:text-xs text-[#a798c8] font-mono whitespace-pre-wrap leading-relaxed">
+      <div className="bg-slate-900 p-4 rounded-xl shadow-inner overflow-hidden">
+        <pre className="text-[10px] sm:text-xs text-slate-300 font-mono whitespace-pre-wrap leading-relaxed">
 {JSON.stringify({
   Center: centerName,
   Room: roomId,
@@ -289,7 +292,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             type="checkbox" 
             checked={doInstallService} 
             onChange={(e) => setDoInstallService(e.target.checked)}
-            className="w-5 h-5 text-[#863bff] rounded focus:ring-[#863bff]" 
+            className="w-5 h-5 text-cyan-600 rounded focus:ring-cyan-500" 
           />
           <span className="font-medium text-slate-800">Install the background service</span>
         </label>
@@ -299,7 +302,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             type="checkbox" 
             checked={openDashboard} 
             onChange={(e) => setOpenDashboard(e.target.checked)}
-            className="w-5 h-5 text-[#863bff] rounded focus:ring-[#863bff]" 
+            className="w-5 h-5 text-cyan-600 rounded focus:ring-cyan-500" 
           />
           <span className="font-medium text-slate-800">Open the dashboard when finished</span>
         </label>
@@ -320,33 +323,30 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+    <div className="min-h-screen bg-[var(--cream)] text-[var(--ink)] flex flex-col font-sans">
+      {/* 2px progress bar */}
+      <div className="h-[2px] w-full bg-[var(--rule)]">
+        <div className="h-full bg-[var(--ink)] transition-all duration-300" style={{ width: `${((step + 1) / 5) * 100}%` }} />
+      </div>
       
       {/* Header */}
-      <header className="bg-[#1b1033] px-6 py-4 flex items-center justify-between shadow-md z-10">
+      <header className="bg-[var(--paper)] border-b border-[var(--rule)] px-6 py-4 flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain bg-white rounded-lg p-1" />
-          <span className="text-white font-bold tracking-tight">Centrix Setup</span>
+          <div className="w-8 h-8 border border-[var(--rule)] bg-[var(--cream)] flex items-center justify-center p-1">
+            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+          </div>
+          <span className="font-serif text-lg tracking-tight text-[var(--ink)]">Centrix Setup</span>
         </div>
         
         {step > 0 && (
-          <div className="flex gap-1.5 items-center bg-white/10 px-3 py-1.5 rounded-full">
-            {[1, 2, 3, 4].map(i => (
-              <div 
-                key={i} 
-                className={`w-2 h-2 rounded-full transition-all duration-300 ${step === i ? 'bg-[#863bff] w-4' : step > i ? 'bg-white/60' : 'bg-white/20'}`} 
-              />
-            ))}
+          <div className="flex gap-2 items-center font-mono text-xs uppercase tracking-wider text-[var(--stone)]">
+            <span>Step {step} / 4</span>
           </div>
         )}
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex items-center justify-center p-6 relative overflow-hidden">
-        {/* Background decorations */}
-        <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-[#863bff]/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
-        
+      <main className="flex-1 flex items-center justify-center p-6 relative">
         <div className="w-full relative z-10">
           {steps[step]}
         </div>

@@ -117,6 +117,7 @@ public class MatchingEngineTests : IDisposable
 
         Assert.Equal(MatchingDecision.NoMatch, result.Decision);
         Assert.Null(result.MatchedSlot);
+        Assert.Equal(MatchFailureCode.NoTimetableSlots, result.FailureCode);
     }
 
     [Fact]
@@ -176,6 +177,94 @@ public class MatchingEngineTests : IDisposable
         Assert.Equal("MATHEMATICS", result.MatchedSlot.SubjectId);
         Assert.True(result.ConfidenceScore >= 85);
         Assert.Equal(MatchingDecision.AutoAssigned, result.Decision);
+        Assert.Equal(MatchFailureCode.None, result.FailureCode);
         Assert.Contains("Schedule override applied", result.ReasoningText);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_NoTimeOverlap_ReturnsTimeOverlapFailed()
+    {
+        var date = new DateTime(2026, 9, 4, 0, 0, 0, DateTimeKind.Utc);
+        var provider = new TestTimetableProvider
+        {
+            Slots = new List<TimetableEntry>
+            {
+                new()
+                {
+                    TimetableEntryId = "TTE-NO-OVERLAP",
+                    SlotId = "SLOT-NO-OVERLAP",
+                    CenterId = "C-1",
+                    RoomId = "R-1",
+                    ScheduledDate = date,
+                    SlotStartTime = new TimeSpan(8, 0, 0),
+                    SlotEndTime = new TimeSpan(9, 0, 0),
+                    BatchId = "BATCH-A",
+                    SubjectId = "PHYSICS"
+                }
+            }
+        };
+
+        var engine = new MatchingEngine(provider, _dbContext, _config, NullLogger<MatchingEngine>.Instance);
+        var lecture = new LectureSession
+        {
+            LectureSessionId = "LSN-NO-OVERLAP",
+            CenterId = "C-1",
+            RoomId = "R-1",
+            // 10:00–11:00 IST, which does not intersect the 08:00–09:00 slot.
+            DetectedStartTime = date.AddHours(4).AddMinutes(30),
+            DetectedEndTime = date.AddHours(5).AddMinutes(30),
+            DetectedDurationSeconds = 60 * 60,
+            VideoFileLocalPath = "/recordings/lecture.mp4"
+        };
+
+        var result = await engine.AnalyzeAsync(lecture);
+
+        Assert.Equal(MatchingDecision.NoMatch, result.Decision);
+        Assert.Equal(MatchFailureCode.TimeOverlapFailed, result.FailureCode);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_LowConfidenceSuggestion_ReturnsLowConfidence()
+    {
+        var date = new DateTime(2026, 9, 4, 0, 0, 0, DateTimeKind.Utc);
+        var provider = new TestTimetableProvider
+        {
+            Slots = new List<TimetableEntry>
+            {
+                new()
+                {
+                    TimetableEntryId = "TTE-LOW",
+                    SlotId = "SLOT-LOW",
+                    CenterId = "C-1",
+                    RoomId = "R-1",
+                    ScheduledDate = date,
+                    SlotStartTime = new TimeSpan(10, 0, 0),
+                    SlotEndTime = new TimeSpan(11, 30, 0),
+                    BatchId = "BATCH-A",
+                    SubjectId = "CHEMISTRY"
+                }
+            }
+        };
+        var strictConfig = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Matching:HighConfidenceThreshold"] = "95",
+            ["Matching:MediumConfidenceThreshold"] = "90"
+        }).Build();
+        var engine = new MatchingEngine(provider, _dbContext, strictConfig, NullLogger<MatchingEngine>.Instance);
+        var lecture = new LectureSession
+        {
+            LectureSessionId = "LSN-LOW",
+            CenterId = "C-1",
+            RoomId = "R-1",
+            DetectedStartTime = date.AddHours(4).AddMinutes(32),
+            DetectedEndTime = date.AddHours(5).AddMinutes(58),
+            DetectedDurationSeconds = 86 * 60,
+            VideoFileLocalPath = "/recordings/unlabelled.mp4"
+        };
+
+        var result = await engine.AnalyzeAsync(lecture);
+
+        Assert.Equal(MatchingDecision.ReviewRequired, result.Decision);
+        Assert.Equal(MatchFailureCode.LowConfidence, result.FailureCode);
     }
 }

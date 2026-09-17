@@ -13,10 +13,14 @@ namespace LectureAgent.Desktop;
 /// </summary>
 internal sealed class SetupWizardForm : Form
 {
-    private static readonly Color HeaderColor = Color.FromArgb(27, 16, 51);
-    private static readonly Color AccentColor = Color.FromArgb(134, 59, 255);
-    private static readonly Color MutedTextColor = Color.FromArgb(185, 174, 220);
-    private static readonly Color LabelColor = Color.FromArgb(51, 41, 82);
+    private static readonly Color HeaderColor = Color.FromArgb(20, 20, 19);
+    private static readonly Color CardColor = Color.FromArgb(28, 28, 26);
+    private static readonly Color BorderColor = Color.FromArgb(40, 40, 37);
+    private static readonly Color TextColor = Color.FromArgb(236, 232, 225);
+    private static readonly Color MutedTextColor = Color.FromArgb(142, 139, 133);
+    private static readonly Color CreamAccent = Color.FromArgb(237, 234, 229);
+    private static readonly Color DarkAccent = Color.FromArgb(20, 20, 19);
+    private static readonly Color LabelColor = Color.FromArgb(236, 232, 225);
 
     private readonly AgentSettings _settings;
     private readonly Button _backButton = new() { Text = "< Back", AutoSize = true };
@@ -24,13 +28,15 @@ internal sealed class SetupWizardForm : Form
     private readonly Label _stepLabel = new();
     private readonly Label _titleLabel = new();
     private readonly Label _subtitleLabel = new();
-    private readonly Panel _stepHost = new() { Dock = DockStyle.Fill, BackColor = Color.White };
+    private readonly Panel _stepHost = new() { Dock = DockStyle.Fill, BackColor = Color.FromArgb(20, 20, 19) };
 
     private readonly TextBox _folderBox = new();
+    private readonly TextBox _notesFolderBox = new();
     private readonly TextBox _centerBox = new();
     private readonly TextBox _roomBox = new();
     private readonly Label _deviceIdPreview = new();
     private readonly CheckBox _driveEnabled = new() { Text = "Upload recordings to Google Drive", AutoSize = true, Checked = true };
+    private readonly CheckBox _youtubeEnabled = new() { Text = "Upload lectures to YouTube (optional)", AutoSize = true, Checked = false };
     private readonly TextBox _credentialsBox = new();
     private readonly TextBox _rootFolderBox = new();
     private readonly CheckBox _installService = new()
@@ -50,7 +56,7 @@ internal sealed class SetupWizardForm : Form
     {
         _settings = settings;
 
-        Text = "Centrix Setup";
+        Text = "Centrix";
         Icon = AppPaths.LoadIcon();
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -59,14 +65,29 @@ internal sealed class SetupWizardForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(680, 560);
         Font = new Font("Segoe UI", 9F);
-        BackColor = Color.White;
+        BackColor = Color.FromArgb(20, 20, 19);
+        ForeColor = TextColor;
+
+        foreach (var tb in new[] { _folderBox, _notesFolderBox, _centerBox, _roomBox, _credentialsBox, _rootFolderBox })
+        {
+            tb.BackColor = Color.FromArgb(28, 28, 26);
+            tb.ForeColor = TextColor;
+            tb.BorderStyle = BorderStyle.FixedSingle;
+        }
+        _driveEnabled.ForeColor = TextColor;
+        _youtubeEnabled.ForeColor = TextColor;
+        _installService.ForeColor = TextColor;
+        _openDashboard.ForeColor = TextColor;
 
         _folderBox.Text = DefaultIfBlank(settings.MonitorFolder,
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Recordings"));
+        _notesFolderBox.Text = settings.NotesMonitorFolder;
         _centerBox.Text = DefaultIfBlank(settings.CenterId, "Pune - PCMC Vidyapeeth");
         _roomBox.Text = settings.RoomId;
         _credentialsBox.Text = settings.GoogleDriveCredentialsPath;
-        _rootFolderBox.Text = DefaultIfBlank(settings.GoogleDriveRootFolder, "LectureRecordings");
+        _rootFolderBox.Text = DefaultIfBlank(settings.GoogleDriveRootFolder, "");
+        _driveEnabled.Checked = settings.GoogleDriveEnabled;
+        _youtubeEnabled.Checked = settings.YouTubeEnabled;
         if (string.IsNullOrWhiteSpace(_roomBox.Text) == false)
         {
             UpdateDevicePreview(this, EventArgs.Empty);
@@ -124,8 +145,8 @@ internal sealed class SetupWizardForm : Form
         }
 
         _titleLabel.AutoSize = true;
-        _titleLabel.Font = new Font("Segoe UI", 15F, FontStyle.Bold);
-        _titleLabel.ForeColor = Color.White;
+        _titleLabel.Font = new Font("Georgia", 16F, FontStyle.Regular);
+        _titleLabel.ForeColor = TextColor;
 
         _subtitleLabel.AutoSize = true;
         _subtitleLabel.Font = new Font("Segoe UI", 9F);
@@ -136,13 +157,13 @@ internal sealed class SetupWizardForm : Form
             Anchor = AnchorStyles.Top | AnchorStyles.Right,
             Location = new Point(ClientSize.Width - 145, 28),
             Size = new Size(115, 32),
-            BackColor = Color.FromArgb(48, 33, 84),
+            BackColor = Color.FromArgb(35, 35, 32),
             Padding = new Padding(6, 4, 6, 4)
         };
         _stepLabel.Dock = DockStyle.Fill;
         _stepLabel.TextAlign = ContentAlignment.MiddleCenter;
         _stepLabel.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-        _stepLabel.ForeColor = Color.FromArgb(220, 210, 245);
+        _stepLabel.ForeColor = TextColor;
         stepPill.Controls.Add(_stepLabel);
 
         header.Controls.AddRange(new Control[] { _titleLabel, _subtitleLabel, stepPill });
@@ -156,7 +177,7 @@ internal sealed class SetupWizardForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            BackColor = Color.FromArgb(246, 244, 251),
+            BackColor = Color.FromArgb(28, 28, 26),
             Padding = new Padding(24, 10, 24, 10),
             Margin = Padding.Empty
         };
@@ -168,15 +189,16 @@ internal sealed class SetupWizardForm : Form
             button.FlatStyle = FlatStyle.Flat;
             button.FlatAppearance.BorderSize = 0;
             button.Padding = new Padding(16, 8, 16, 8);
-            button.BackColor = Color.FromArgb(238, 235, 248);
-            button.ForeColor = LabelColor;
+            button.BackColor = Color.FromArgb(35, 35, 32);
+            button.ForeColor = TextColor;
             button.UseVisualStyleBackColor = false;
             button.Height = 38;
             button.Click += OnNavigate;
         }
 
-        _nextButton.BackColor = AccentColor;
-        _nextButton.ForeColor = Color.White;
+        _nextButton.BackColor = CreamAccent;
+        _nextButton.ForeColor = DarkAccent;
+        _nextButton.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
 
         var cancel = new Button
         {
@@ -185,8 +207,8 @@ internal sealed class SetupWizardForm : Form
             Height = 38,
             FlatStyle = FlatStyle.Flat,
             Padding = new Padding(16, 8, 16, 8),
-            BackColor = Color.FromArgb(238, 235, 248),
-            ForeColor = LabelColor,
+            BackColor = Color.FromArgb(35, 35, 32),
+            ForeColor = TextColor,
             UseVisualStyleBackColor = false
         };
         cancel.FlatAppearance.BorderSize = 0;
@@ -245,6 +267,11 @@ internal sealed class SetupWizardForm : Form
     {
         if (_step == 1)
         {
+            // Explorer's "Copy as path" and shell names often carry quotes; they are not
+            // part of the folder name. Any drive or share is accepted as-is.
+            _folderBox.Text = _folderBox.Text.Trim().Trim('"', '\'').Trim();
+            _notesFolderBox.Text = _notesFolderBox.Text.Trim().Trim('"', '\'').Trim();
+
             var folder = _folderBox.Text.Trim();
             if (folder.Length == 0)
             {
@@ -255,9 +282,34 @@ internal sealed class SetupWizardForm : Form
             if (!Directory.Exists(folder)
                 && MessageBox.Show(this,
                     $"The folder does not exist yet:\n\n{folder}\n\nCreate it now?",
-                    "Centrix Setup", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                    "Centrix", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
             {
-                Directory.CreateDirectory(folder);
+                try
+                {
+                    Directory.CreateDirectory(folder);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+                {
+                    Warn($"The folder could not be created ({ex.Message}). The agent will keep retrying in the background once the drive or share is available.");
+                }
+            }
+
+            // The notes folder is optional: an unreachable path is fine to save, the
+            // agent watches it as soon as it becomes available.
+            var notesFolder = _notesFolderBox.Text.Trim();
+            if (notesFolder.Length > 0 && !Directory.Exists(notesFolder)
+                && MessageBox.Show(this,
+                    $"The notes folder does not exist yet:\n\n{notesFolder}\n\nCreate it now?",
+                    "Centrix", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            {
+                try
+                {
+                    Directory.CreateDirectory(notesFolder);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+                {
+                    Warn($"The notes folder could not be created ({ex.Message}). It will be watched as soon as the path becomes available.");
+                }
             }
         }
 
@@ -324,7 +376,7 @@ internal sealed class SetupWizardForm : Form
             Dock = DockStyle.Top,
             ColumnCount = 1,
             AutoSize = true,
-            BackColor = Color.FromArgb(248, 246, 253),
+            BackColor = CardColor,
             Padding = new Padding(16, 12, 16, 12),
             Margin = new Padding(0, 0, 0, 14)
         };
@@ -345,7 +397,7 @@ internal sealed class SetupWizardForm : Form
                 Text = feat,
                 AutoSize = true,
                 Font = new Font("Segoe UI", 9.25F),
-                ForeColor = Color.FromArgb(40, 32, 64),
+                ForeColor = TextColor,
                 Margin = new Padding(0, 3, 0, 3)
             });
         }
@@ -390,8 +442,41 @@ internal sealed class SetupWizardForm : Form
         row.Controls.Add(browse, 1, 0);
         panel.Controls.Add(row);
 
+        // Optional separate folder for notes (PDF/PPT). Leave blank to keep notes in the
+        // recordings folder — both folder types are watched for video and PDF anyway.
+        var notesLabel = FieldLabel("Notes / PDF folder (optional)");
+        notesLabel.Margin = new Padding(0, 14, 0, 3);
+        panel.Controls.Add(notesLabel);
+        _notesFolderBox.Dock = DockStyle.Fill;
+        var notesBrowse = new Button { Text = "Browse…", AutoSize = true };
+        notesBrowse.Click += (_, _) =>
+        {
+            using var dialog = new FolderBrowserDialog
+            {
+                Description = "Select the folder where class notes (PDF, PPT) are saved, if they arrive in a different folder than the recordings.",
+                ShowNewFolderButton = true
+            };
+            if (Directory.Exists(_notesFolderBox.Text))
+            {
+                dialog.SelectedPath = _notesFolderBox.Text;
+            }
+
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                _notesFolderBox.Text = dialog.SelectedPath;
+            }
+        };
+
+        var notesRow = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, AutoSize = true };
+        notesRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        notesRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        notesRow.Controls.Add(_notesFolderBox, 0, 0);
+        notesRow.Controls.Add(notesBrowse, 1, 0);
+        panel.Controls.Add(notesRow);
+
         panel.Controls.Add(MakeNote(
-            "All subfolders are watched automatically. Videos (.mp4, .mkv, …) and notes (.pdf, .pptx) are picked up; " +
+            "Any folder on any drive works — type or browse a full path (e.g. D:\\Recordings or \\\\NAS\\share). " +
+            "All subfolders are watched automatically; videos (.mp4, .mkv, …) and notes (.pdf, .pptx) are picked up, " +
             "only files saved in the last 24 hours are treated as new."));
         return panel;
     }
@@ -432,8 +517,7 @@ internal sealed class SetupWizardForm : Form
         _rootFolderBox.Dock = DockStyle.Top;
         panel.Controls.Add(_rootFolderBox);
         panel.Controls.Add(MakeNote(
-            "Type the exact name of the existing folder on Google Drive that contains your batch folders " +
-            "(e.g. \"Center-Pune\" or \"LectureRecordings\"). The agent will search inside this folder — it will NOT create new folders."));
+            "Type the folder name on Google Drive containing your batch folders (leave blank if folders are at the root of Google Drive). Centrix will search inside this folder — it will NOT create unnecessary parent folders."));
 
         // Credentials file
         var caption = FieldLabel("Google credentials file (OAuth desktop JSON)");
@@ -463,8 +547,9 @@ internal sealed class SetupWizardForm : Form
             Text = "Sign in to Google now…",
             AutoSize = true,
             FlatStyle = FlatStyle.Flat,
-            BackColor = AccentColor,
-            ForeColor = Color.White,
+            BackColor = CreamAccent,
+            ForeColor = DarkAccent,
+            Font = new Font("Segoe UI", 9F, FontStyle.Bold),
             Padding = new Padding(14, 7, 14, 7),
             Margin = new Padding(0, 8, 10, 0)
         };
@@ -479,24 +564,50 @@ internal sealed class SetupWizardForm : Form
 
         signInButton.Click += async (_, _) =>
         {
-            if (_credentialsBox.Text.Trim().Length > 0)
+            try
             {
-                var destination = Path.Combine(AppPaths.SharedRoot, "config", "google_credentials.json");
-                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                File.Copy(_credentialsBox.Text.Trim(), destination, overwrite: true);
-                _settings.GoogleDriveCredentialsPath = destination;
+                var selectedCredentials = _credentialsBox.Text.Trim();
+                if (selectedCredentials.Length > 0)
+                {
+                    if (!File.Exists(selectedCredentials))
+                    {
+                        signInStatus.Text = "The selected Google credentials JSON file cannot be found.";
+                        return;
+                    }
+
+                    var destination = Path.Combine(AppPaths.SharedRoot, "config", "google_credentials.json");
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    File.Copy(selectedCredentials, destination, overwrite: true);
+                    _settings.GoogleDriveCredentialsPath = destination;
+                }
+
+                if (string.IsNullOrWhiteSpace(_settings.GoogleDriveCredentialsPath)
+                    || !File.Exists(_settings.GoogleDriveCredentialsPath))
+                {
+                    signInStatus.Text = "Select the Google OAuth desktop JSON file before signing in.";
+                    return;
+                }
+
+                if (_rootFolderBox.Text.Trim().Length > 0)
+                {
+                    _settings.GoogleDriveRootFolder = _rootFolderBox.Text.Trim();
+                }
+                _settings.GoogleDriveEnabled = _driveEnabled.Checked;
+                _settings.Save();
             }
-            if (_rootFolderBox.Text.Trim().Length > 0)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                or InvalidOperationException or System.Text.Json.JsonException)
             {
-                _settings.GoogleDriveRootFolder = _rootFolderBox.Text.Trim();
+                // Never allow a local settings or file-permission problem to terminate
+                // the setup wizard. The operator gets an actionable status and can retry.
+                signInStatus.Text = $"Could not save Google settings: {ex.Message}";
+                return;
             }
-            _settings.GoogleDriveEnabled = _driveEnabled.Checked;
-            _settings.Save();
 
             if (!File.Exists(AppPaths.AgentExecutable))
             {
                 MessageBox.Show(this, "The agent program was not found, so sign-in cannot start yet.",
-                    "Centrix Setup", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    "Centrix", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
@@ -517,7 +628,7 @@ internal sealed class SetupWizardForm : Form
 
                 signInStatus.Text = exitCode == 0
                     ? "Signed in successfully!"
-                    : "Sign-in did not complete. Check credentials and retry.";
+                    : "Sign-in did not complete. If Google says ‘Access blocked’, the Google Cloud owner must add this account as a test user or publish and verify the OAuth app.";
             }
             catch
             {
@@ -539,6 +650,10 @@ internal sealed class SetupWizardForm : Form
         SyncDriveControls(this, EventArgs.Empty);
         _driveEnabled.CheckedChanged += SyncDriveControls;
 
+        _youtubeEnabled.Margin = new Padding(0, 14, 0, 4);
+        panel.Controls.Add(_youtubeEnabled);
+        panel.Controls.Add(MakeNote("Optional: Upload lectures to YouTube. You can change this anytime from Settings."));
+
         panel.Controls.Add(MakeNote(
             "Leave credentials empty if already installed on this PC. You can also sign in or change this anytime from Settings."));
         return panel;
@@ -558,7 +673,7 @@ internal sealed class SetupWizardForm : Form
         {
             Dock = DockStyle.Top,
             AutoSize = true,
-            BackColor = Color.FromArgb(248, 246, 253),
+            BackColor = CardColor,
             Padding = new Padding(16, 12, 16, 12),
             Margin = new Padding(0, 0, 0, 14)
         };
@@ -568,7 +683,7 @@ internal sealed class SetupWizardForm : Form
             Text = BuildSummaryText(),
             AutoSize = true,
             Dock = DockStyle.Top,
-            ForeColor = LabelColor,
+            ForeColor = TextColor,
             Font = new Font("Consolas", 9.25F),
             Margin = Padding.Empty
         };
@@ -590,10 +705,12 @@ internal sealed class SetupWizardForm : Form
 
     private string BuildSummaryText() => new StringBuilder()
         .AppendLine($"Recordings folder :  {_folderBox.Text.Trim()}")
+        .AppendLine($"Notes/PDF folder  :  {(_notesFolderBox.Text.Trim().Length > 0 ? _notesFolderBox.Text.Trim() : "same as recordings folder")}")
         .AppendLine($"Center            :  {_centerBox.Text.Trim()}")
         .AppendLine($"Room              :  {_roomBox.Text.Trim()}")
         .AppendLine($"Google Drive      :  {(_driveEnabled.Checked ? "enabled" + (_credentialsBox.Text.Trim().Length > 0 ? " (new credentials file)" : string.Empty) : "disabled — files queue locally only")}")
         .AppendLine($"Drive folder      :  {(_driveEnabled.Checked && _rootFolderBox.Text.Trim().Length > 0 ? _rootFolderBox.Text.Trim() : "—")}")
+        .AppendLine($"YouTube upload    :  {(_youtubeEnabled.Checked ? "enabled" : "disabled (optional)")}")
         .AppendLine($"Dashboard         :  http://localhost:{_settings.Port}/  +  phone link on the same WiFi")
         .ToString();
 
@@ -613,11 +730,14 @@ internal sealed class SetupWizardForm : Form
         try
         {
             _settings.MonitorFolder = _folderBox.Text.Trim();
+            _settings.NotesMonitorFolder = _notesFolderBox.Text.Trim();
             _settings.CenterId = _centerBox.Text.Trim();
             _settings.RoomId = _roomBox.Text.Trim();
             _settings.DeviceId = room.Length > 0 ? $"PC-ROOM-{room}" : _settings.DeviceId;
             _settings.ApiKey = apiKey;
             _settings.GoogleDriveEnabled = _driveEnabled.Checked;
+            _settings.YouTubeEnabled = _youtubeEnabled.Checked;
+            _settings.YouTubeAutoPublish = _youtubeEnabled.Checked;
             if (_driveEnabled.Checked && _rootFolderBox.Text.Trim().Length > 0)
             {
                 _settings.GoogleDriveRootFolder = _rootFolderBox.Text.Trim();
@@ -636,13 +756,14 @@ internal sealed class SetupWizardForm : Form
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(this, $"Could not save the setup:\n\n{ex.Message}", "Centrix Setup",
+            MessageBox.Show(this, $"Could not save the setup:\n\n{ex.Message}", "Centrix",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
 
+        var serviceStateBefore = AgentServiceControl.GetState();
         if (_installService.Visible && _installService.Checked
-            && AgentServiceControl.GetState() == AgentServiceState.NotInstalled)
+            && serviceStateBefore == AgentServiceState.NotInstalled)
         {
             try
             {
@@ -655,7 +776,24 @@ internal sealed class SetupWizardForm : Form
                 MessageBox.Show(this,
                     "The background service could not be installed:\n\n" + ex.Message
                     + "\n\nUploads will only run while this app is open. Re-run setup to try again.",
-                    "Centrix Setup", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    "Centrix", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+        else if (serviceStateBefore is AgentServiceState.Running or AgentServiceState.Stopped
+            or AgentServiceState.Starting or AgentServiceState.Stopping)
+        {
+            // The service reads the watched folders only at startup, so a restart is
+            // what makes the new recordings/notes paths take effect immediately.
+            try
+            {
+                AgentServiceControl.Restart();
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or TimeoutException)
+            {
+                MessageBox.Show(this,
+                    "The settings were saved, but the background service could not be restarted:\n\n"
+                    + ex.Message + "\n\nUse \"Restart agent\" in the app header to apply the new folders.",
+                    "Centrix", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
@@ -679,6 +817,7 @@ internal sealed class SetupWizardForm : Form
 
             Settings chosen during setup:
               Recordings folder : {_folderBox.Text.Trim()}
+              Notes/PDF folder  : {(_notesFolderBox.Text.Trim().Length > 0 ? _notesFolderBox.Text.Trim() : "same as recordings folder")}
               Center            : {_centerBox.Text.Trim()}
               Room              : {_roomBox.Text.Trim()}
 
@@ -709,7 +848,7 @@ internal sealed class SetupWizardForm : Form
     }
 
     private void Warn(string message) =>
-        MessageBox.Show(this, message, "Centrix Setup", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        MessageBox.Show(this, message, "Centrix", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
     private static Label FieldLabel(string text) => new()
     {
@@ -723,7 +862,7 @@ internal sealed class SetupWizardForm : Form
     {
         Text = text,
         AutoSize = true,
-        ForeColor = Color.FromArgb(120, 113, 145),
+        ForeColor = MutedTextColor,
         Font = new Font("Segoe UI", 8.25F),
         MaximumSize = new Size(580, 0),
         Margin = new Padding(1, 8, 0, 6)

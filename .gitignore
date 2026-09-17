@@ -50,3 +50,6 @@ installer/stage/
 *.exe
 *.msi
 **/payload.zip
+agent/tools/cloudflared
+tools/cloudflared
+

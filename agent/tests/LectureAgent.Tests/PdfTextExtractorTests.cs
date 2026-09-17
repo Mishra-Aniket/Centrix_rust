@@ -126,4 +126,19 @@ public class PdfTextExtractorTests
             File.Delete(pdfPath);
         }
     }
+
+    [Fact]
+    public void Extract_RealWhiteboardRasterPdf_ExtractsBatchAndSubjectViaOcr()
+    {
+        var testPath = "/Users/aniketmishra/Documents/anike1509261733001.pdf";
+        if (!File.Exists(testPath))
+            return;
+
+        var meta = PdfTextExtractor.Extract(testPath);
+        Assert.True(meta.HasHints);
+        Assert.True(meta.BatchCodes.Count > 0);
+        Assert.Contains("chemistry", meta.Subjects);
+        Assert.Equal("Proanant Sir", meta.TeacherName);
+        Assert.Equal(3, meta.LectureNumber);
+    }
 }

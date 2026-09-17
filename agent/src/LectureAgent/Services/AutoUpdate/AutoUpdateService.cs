@@ -67,7 +67,7 @@ public sealed class AutoUpdateService : BackgroundService
             var dataRoot = Configuration.AgentPaths.DataRoot;
             var baseDir = AppContext.BaseDirectory;
             var root = Path.GetFullPath(dataRoot).Equals(Path.GetFullPath(baseDir), StringComparison.OrdinalIgnoreCase)
-                ? Path.Combine(Path.GetTempPath(), "LectureAgentUpdates")
+                ? Path.Combine(Path.GetTempPath(), "CentrixUpdates")
                 : Path.Combine(dataRoot, "updates");
             Directory.CreateDirectory(root);
             return root;
@@ -231,10 +231,13 @@ public sealed class AutoUpdateService : BackgroundService
 
         ZipFile.ExtractToDirectory(zipPath, stagingDir, overwriteFiles: true);
 
-        var looksLikeAgent = File.Exists(Path.Combine(stagingDir, "LectureAgent.dll"))
+        var looksLikeAgent = File.Exists(Path.Combine(stagingDir, "Centrix.dll"))
+            || File.Exists(Path.Combine(stagingDir, "Centrix.exe"))
+            // Accept one last legacy package format during the rename transition.
+            || File.Exists(Path.Combine(stagingDir, "LectureAgent.dll"))
             || File.Exists(Path.Combine(stagingDir, "LectureAgent.exe"));
         if (!looksLikeAgent)
-            throw new InvalidOperationException("Package does not look like an agent build (LectureAgent.dll/.exe missing)");
+            throw new InvalidOperationException("Package does not contain a valid Centrix agent build (Centrix.dll/.exe missing)");
 
         SetState("ReadyToApply", $"Version {manifest.Version} staged; restarting to apply");
 
@@ -259,7 +262,7 @@ public sealed class AutoUpdateService : BackgroundService
         {
             var scriptPath = Path.Combine(workspace, UpdateScripts.WindowsScriptName);
             File.WriteAllText(scriptPath, UpdateScripts.WindowsScript);
-            var serviceName = _config["AutoUpdate:ServiceName"] ?? "LectureAgent";
+            var serviceName = _config["AutoUpdate:ServiceName"] ?? "Centrix";
 
             psi = new ProcessStartInfo
             {
@@ -283,7 +286,7 @@ public sealed class AutoUpdateService : BackgroundService
             {
                 var systemdUnit = _config["AutoUpdate:SystemdUnit"];
                 restartCommand = string.IsNullOrWhiteSpace(systemdUnit)
-                    ? $"cd \"{installDir}\" && nohup ./LectureAgent >> \"{logFile}\" 2>&1 &"
+                    ? $"cd \"{installDir}\" && nohup ./Centrix >> \"{logFile}\" 2>&1 &"
                     : $"systemctl restart \"{systemdUnit}\"";
             }
 

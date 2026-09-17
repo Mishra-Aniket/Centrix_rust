@@ -137,7 +137,7 @@ export function VideoThumbnail({
               )}
             </div>
             <span className="text-slate-400 font-mono text-[9px] shrink-0">
-              {validation.fileFormat.toUpperCase()}
+              {validation.fileFormat?.toUpperCase() || 'FILE'}
             </span>
           </div>
         )}

@@ -37,6 +37,15 @@ public class LectureContext : DbContext
         modelBuilder.Entity<LectureSession>()
             .HasIndex(l => l.ReviewStatus)
             .HasDatabaseName("IX_Lecture_ReviewStatus");
+        modelBuilder.Entity<LectureSession>()
+            .HasIndex(l => l.MatchStatus)
+            .HasDatabaseName("IX_Lecture_MatchStatus");
+        modelBuilder.Entity<LectureSession>()
+            .HasIndex(l => l.YouTubePublishStatus)
+            .HasDatabaseName("IX_Lecture_YouTubePublishStatus");
+        modelBuilder.Entity<LectureSession>()
+            .HasIndex(l => l.QcStatus)
+            .HasDatabaseName("IX_Lecture_QcStatus");
 
         // TimetableEntry
         modelBuilder.Entity<TimetableEntry>()

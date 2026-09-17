@@ -93,6 +93,13 @@ public class DriveFolderResolutionTests
     [InlineData("MATH", "Maths", true)]
     [InlineData("Physics", "Phy", true)]
     [InlineData("CHEMISTRY", "Chem", true)]
+    [InlineData("Organic Chemistry", "Organic Chem", true)]
+    [InlineData("Organic Chemistry", "Chemistry", false)]
+    [InlineData("Inorganic Chemistry", "IOC", true)]
+    [InlineData("Physical Chemistry", "Physical Chem", true)]
+    [InlineData("Social Science", "SST", true)]
+    [InlineData("Mental Ability", "MAT", true)]
+    [InlineData("Computer Science", "CS", true)]
     [InlineData("Botany", "Bot", true)]
     [InlineData("Zoology", "Zoo", true)]
     [InlineData("Biology", "Bio", true)]
@@ -118,12 +125,28 @@ public class DriveFolderResolutionTests
             if (norm1 == norm2) return true;
             if (string.IsNullOrEmpty(norm1) || string.IsNullOrEmpty(norm2)) return false;
 
+            // Specialized chemistry branches (inorganic must precede organic because "inorganic" contains "organic")
+            bool isInorg1 = norm1.Contains("inorganic") || norm1 == "ioc";
+            bool isInorg2 = norm2.Contains("inorganic") || norm2 == "ioc";
+            if (isInorg1 || isInorg2) return isInorg1 && isInorg2;
+
+            bool isOrg1 = (norm1.Contains("organic") && !norm1.Contains("inorganic")) || norm1 == "oc";
+            bool isOrg2 = (norm2.Contains("organic") && !norm2.Contains("inorganic")) || norm2 == "oc";
+            if (isOrg1 || isOrg2) return isOrg1 && isOrg2;
+
+            bool isPhysChem1 = norm1.Contains("physicalchem") || norm1 == "pc";
+            bool isPhysChem2 = norm2.Contains("physicalchem") || norm2 == "pc";
+            if (isPhysChem1 || isPhysChem2) return isPhysChem1 && isPhysChem2;
+
             if ((norm1.StartsWith("math") || norm1.StartsWith("mathem")) && (norm2.StartsWith("math") || norm2.StartsWith("mathem"))) return true;
             if (norm1.StartsWith("chem") && norm2.StartsWith("chem")) return true;
             if (norm1.StartsWith("phy") && norm2.StartsWith("phy")) return true;
             if (norm1.StartsWith("bio") && norm2.StartsWith("bio")) return true;
             if (norm1.StartsWith("bot") && norm2.StartsWith("bot")) return true;
             if (norm1.StartsWith("zoo") && norm2.StartsWith("zoo")) return true;
+            if ((norm1.Contains("social") || norm1 == "sst") && (norm2.Contains("social") || norm2 == "sst")) return true;
+            if ((norm1.Contains("mental") || norm1 == "mat") && (norm2.Contains("mental") || norm2 == "mat")) return true;
+            if ((norm1.Contains("computer") || norm1 == "cs") && (norm2.Contains("computer") || norm2 == "cs")) return true;
 
             if (norm1.Length >= 3 && norm2.Length >= 3)
             {

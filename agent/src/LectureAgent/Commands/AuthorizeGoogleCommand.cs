@@ -64,6 +64,55 @@ internal static class AuthorizeGoogleCommand
         }
     }
 
+    public const string YouTubeFlag = "--authorize-youtube";
+
+    public static async Task<int> RunYouTubeAsync()
+    {
+        try
+        {
+            var configuration = BuildConfiguration();
+            var rawCredsPath = configuration["YouTube:CredentialsPath"] ?? configuration["GoogleDrive:CredentialsPath"] ?? "config/google_credentials.json";
+            var credentialsPath = Resolve(rawCredsPath);
+            if (!File.Exists(credentialsPath) && !File.Exists(credentialsPath + ".protected"))
+            {
+                var sharedCreds = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "LectureAgent", "config", "google_credentials.json");
+                if (File.Exists(sharedCreds) || File.Exists(sharedCreds + ".protected"))
+                {
+                    credentialsPath = sharedCreds;
+                }
+            }
+
+            var rawTokenPath = configuration["YouTube:TokenPath"] ?? "data/youtube-token";
+            var tokenPath = Resolve(rawTokenPath);
+            if (!Path.IsPathRooted(rawTokenPath) && AgentPaths.SharedRoot != null)
+            {
+                tokenPath = Path.Combine(AgentPaths.SharedRoot, rawTokenPath);
+            }
+
+            var protector = new CredentialProtector();
+            await using var credentialStream = protector.OpenRead(credentialsPath);
+
+            Console.WriteLine("A browser window will open. Sign in with the centre's Google account to authorize YouTube and click Allow.");
+            var secrets = GoogleClientSecrets.FromStream(credentialStream).Secrets;
+            await GoogleWebAuthorizationBroker.AuthorizeAsync(
+                secrets,
+                new[] { "https://www.googleapis.com/auth/youtube.upload" },
+                "lecture-agent-youtube",
+                CancellationToken.None,
+                new FileDataStore(tokenPath, true));
+
+            Console.WriteLine("YouTube connected successfully.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"YouTube authorization failed: {ex.Message}");
+            return 1;
+        }
+    }
+
     private static IConfigurationRoot BuildConfiguration()
     {
         var builder = new ConfigurationBuilder()

@@ -1,4 +1,4 @@
-' Starts the LectureAgent watchdog completely hidden (no black window).
+' Starts the Centrix watchdog completely hidden (no black window).
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
 shell.CurrentDirectory = fso.GetParentFolderName(WScript.ScriptFullName)

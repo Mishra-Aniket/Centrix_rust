@@ -31,38 +31,29 @@ NEW ROOMS (604, 501, ...):
 IMPORTANT: Always use http:// (NOT https://) - port 5200 is HTTP only.
 
 ================================================================
-1. ROOM 603 WINDOWS PC - INSTALL (10 minutes)
+1. WINDOWS PC 1-CLICK ZERO-COPY INSTALL (1 minute)
 ================================================================
 
-STEP 1  Copy "LectureAgent.zip" to the PC (pendrive/download, Desktop is fine).
-        Right-click the zip -> "Extract All..." -> in the path box type:  C:\
-        -> click Extract.
-        Windows creates C:\LectureAgent automatically, with all files
-        directly inside (no extra folder, no manual folder creation).
+NO MANUAL COPYING TO C: DRIVE NEEDED!
+Everything (binaries, web dashboard, credentials, tokens, shortcuts, autostart)
+installs automatically in ONE GO.
 
-STEP 2  Open the folder, double-click:  run-agent.bat
-        - First time: a SETUP WIZARD opens and asks (press Enter to accept default):
-              Where do recordings appear?   [Documents]
-              Center name                   [Pune - PCMC Vidyapeeth]
-              Room ID                       [603]
-        - It saves everything itself. It also creates/updates DASHBOARD-ACCESS.txt
-          (contains the PC's IP + the API key).
+METHOD A (RECOMMENDED): Double-Click "Centrix-Setup.exe"
+1. Copy `Centrix-Setup.exe` (from pendrive, shared drive, or Centrix-Windows-Installer.zip)
+   to anywhere on the Windows PC (Desktop, Downloads, etc.).
+2. Double-click `Centrix-Setup.exe`.
+3. In 5 seconds, the installer automatically:
+   - Installs all agent & app files to `C:\ProgramData\Centrix\`.
+   - Auto-provisions Google Drive credentials and pre-authorized tokens.
+   - Creates Desktop ("Centrix") and Start Menu shortcuts.
+   - Registers Windows Autostart so Centrix starts 24x7 automatically on boot.
+   - Configures Windows Firewall for port 5200 (LAN access for MaxHub/mobile).
+   - Starts Centrix immediately!
+4. The dashboard opens at: http://localhost:5200
 
-STEP 3  The dashboard opens automatically: http://localhost:5200
-        - Login screen asks for the API key.
-        - Open DASHBOARD-ACCESS.txt, copy the key, paste it. Done (browser remembers).
-
-STEP 4  FIRST TEST:
-        - Copy any video or PDF into the recordings folder (default: Documents,
-          any subfolder is fine).
-        - Watch the "Live" tab: the file should appear and start uploading.
-        - The FIRST upload opens a Google page -> sign in with the CENTER's
-          Google account -> click Allow. This happens only once in its life.
-
-STEP 5  24x7 AUTO-START (recommended):
-        - Double-click:  install-autostart.bat
-        - Now the agent starts by itself whenever the PC turns on.
-        - To undo later: uninstall-autostart.bat
+METHOD B: "Install-Centrix.bat" (For USB/IT automation)
+1. In `Windows-Latest` folder, right-click `Install-Centrix.bat` -> "Run as administrator".
+2. It performs the exact same 1-click automated setup and starts the service.
 
 RULES OF THE SYSTEM:
   - Only files written in the last 24 hours are picked up (old files ignored).

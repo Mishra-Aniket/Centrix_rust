@@ -97,6 +97,12 @@ public class LectureRepository : GenericRepository<LectureSession>, ILectureRepo
             .FirstOrDefaultAsync(l => l.VideoFileLocalPath == videoLocalPath);
     }
 
+    public async Task<LectureSession?> GetByFilePathAsync(string filePath)
+    {
+        return await _dbSet
+            .FirstOrDefaultAsync(l => l.VideoFileLocalPath == filePath || l.PdfFileLocalPath == filePath);
+    }
+
     public async Task<(List<LectureSession> Items, int TotalCount)> GetPagedLecturesAsync(string? centerId, LectureStatus? status, int offset, int limit)
     {
         var query = _dbSet.AsNoTracking().AsQueryable();
@@ -115,6 +121,33 @@ public class LectureRepository : GenericRepository<LectureSession>, ILectureRepo
             .ToListAsync();
 
         return (items, totalCount);
+    }
+
+    public async Task<LectureSummary> GetSummaryAsync(string centerId)
+    {
+        var query = _dbSet.Where(l => l.CenterId == centerId);
+
+        return new LectureSummary
+        {
+            Total = await query.CountAsync(),
+            Uploaded = await query.CountAsync(l => l.Status == LectureStatus.Uploaded || l.Status == LectureStatus.Verified),
+            Matched = await query.CountAsync(l => l.MatchStatus == MatchStatus.Matched),
+            Unmatched = await query.CountAsync(l => l.MatchStatus == MatchStatus.NoMatch),
+            FailedUpload = await query.CountAsync(l => l.Status == LectureStatus.UploadFailed),
+            PendingReview = await query.CountAsync(l =>
+                l.Status == LectureStatus.ReviewRequired || l.ReviewStatus == ReviewStatus.Pending)
+        };
+    }
+
+    public async Task<List<LectureSession>> GetByYouTubePublishStatusAsync(params YouTubePublishStatus[] statuses)
+    {
+        if (statuses.Length == 0)
+            return new List<LectureSession>();
+
+        return await _dbSet
+            .Where(l => statuses.Contains(l.YouTubePublishStatus))
+            .OrderBy(l => l.UpdatedAt)
+            .ToListAsync();
     }
 }
 
@@ -217,6 +250,28 @@ public class AuditLogRepository : GenericRepository<AuditLogEntry>
             .Where(a => !a.SyncedToCloud)
             .OrderBy(a => a.CreatedAt)
             .ToListAsync();
+    }
+
+    public async Task<(List<AuditLogEntry> Items, int TotalCount)> GetPagedAsync(
+        string? entityType,
+        string? entityId,
+        int offset,
+        int limit)
+    {
+        var query = _dbSet.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(entityType))
+            query = query.Where(a => a.EntityType == entityType);
+        if (!string.IsNullOrWhiteSpace(entityId))
+            query = query.Where(a => a.EntityId == entityId);
+
+        var totalCount = await query.CountAsync();
+        var items = await query
+            .OrderByDescending(a => a.CreatedAt)
+            .Skip(Math.Max(0, offset))
+            .Take(Math.Clamp(limit, 1, 200))
+            .ToListAsync();
+
+        return (items, totalCount);
     }
 }
 

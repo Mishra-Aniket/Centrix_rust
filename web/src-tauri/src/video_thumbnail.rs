@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ThumbnailResult {
     pub success: bool,
     pub data_url: Option<String>,

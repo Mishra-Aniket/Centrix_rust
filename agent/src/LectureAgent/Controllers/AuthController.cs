@@ -63,6 +63,61 @@ public sealed class AuthController : ControllerBase
         return Ok(new { status = "pending" });
     }
 
+    /// <summary>Check if YouTube channel is linked/authorized.</summary>
+    [HttpGet("youtube/status")]
+    public ActionResult GetYouTubeStatus()
+    {
+        return Ok(new
+        {
+            enabled = _configuration.GetValue("YouTube:Enabled", false),
+            connected = _sessions.IsYouTubeConnected()
+        });
+    }
+
+    /// <summary>Begins YouTube channel connection OAuth flow.</summary>
+    [HttpPost("youtube/start")]
+    public ActionResult StartYouTubeAuth()
+    {
+        var redirectUri = $"http://localhost:{HttpPort()}/api/auth/youtube/callback";
+        var flow = _sessions.StartYouTubeAuth(redirectUri);
+        return Ok(new { flowId = flow.FlowId, consentUrl = flow.ConsentUrl, redirectUri });
+    }
+
+    /// <summary>Google redirects here after YouTube consent.</summary>
+    [HttpGet("youtube/callback")]
+    public async Task<IActionResult> YouTubeCallback(
+        [FromQuery] string? state,
+        [FromQuery] string? code,
+        [FromQuery] string? error)
+    {
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            return CallbackPage(null, $"YouTube connection cancelled or failed: {error}");
+        }
+
+        if (string.IsNullOrWhiteSpace(state) || string.IsNullOrWhiteSpace(code))
+        {
+            return CallbackPage(null, "YouTube authorization was cancelled or incomplete.");
+        }
+
+        var redirectUri = $"http://localhost:{HttpPort()}/api/auth/youtube/callback";
+        var (success, authError) = await _sessions.CompleteYouTubeAuthAsync(state, code, redirectUri);
+        if (!success)
+        {
+            return CallbackPage(null, authError);
+        }
+
+        return Content("""
+            <!doctype html><html><head><meta charset="utf-8"><title>YouTube Connected</title></head>
+            <body style="font-family:system-ui;padding:40px;max-width:480px;margin:auto;text-align:center">
+            <h2 style="color:#059669;margin-bottom:8px">✓ YouTube Channel Connected!</h2>
+            <p style="color:#4b5563;font-size:14px;line-height:1.5">Your YouTube channel is successfully authorized. Centrix can now publish lecture recordings as unlisted.</p>
+            <p style="margin-top:24px"><button onclick="window.close()" style="background:#0f172a;color:#fff;border:none;padding:8px 18px;border-radius:10px;font-weight:600;cursor:pointer">Close Window</button></p>
+            <script>setTimeout(function(){try{window.close();}catch(e){}},2500);</script>
+            </body></html>
+            """, "text/html");
+    }
+
     /// <summary>
     /// Public: Google redirects here after consent. The code is exchanged for an identity,
     /// the session is issued, and a tiny page stores it and returns to the dashboard.
@@ -79,7 +134,7 @@ public sealed class AuthController : ControllerBase
             {
                 "access_denied" =>
                     "Google blocked the sign-in for this account. If you saw \"Google hasn't verified this app\", "
-                    + "click Advanced, then \"Go to Lecture Agent (unsafe)\", and Allow. If the app is in Testing "
+                    + "click Advanced, then \"Go to Centrix (unsafe)\", and Allow. If the app is in Testing "
                     + "mode in Google Cloud Console, add your email as a test user.",
                 _ => $"Google sign-in failed: {error}"
             });
@@ -106,9 +161,9 @@ public sealed class AuthController : ControllerBase
             : string.Empty;
 
         return Content($"""
-            <!doctype html><html><head><meta charset="utf-8"><title>Lecture Agent — signed in</title></head>
+            <!doctype html><html><head><meta charset="utf-8"><title>Centrix — signed in</title></head>
             <body style="font-family:system-ui;padding:40px;max-width:480px;margin:auto">
-            <h2 style="margin-bottom:8px">Lecture Agent</h2>
+            <h2 style="margin-bottom:8px">Centrix</h2>
             {message}
             {script}
             </body></html>
@@ -124,7 +179,8 @@ public sealed class AuthController : ControllerBase
             return Ok(new { mode = "google", email = session.Email, rooms = session.Rooms, admin = session.IsAdmin });
         }
 
-        if (string.Equals(HttpContext.Items[ApiKeyMiddleware.AuthModeItem] as string, "key", StringComparison.Ordinal))
+        if (string.Equals(HttpContext.Items[ApiKeyMiddleware.AuthModeItem] as string, "key", StringComparison.Ordinal)
+            || string.Equals(HttpContext.Items[ApiKeyMiddleware.AuthModeItem] as string, "local", StringComparison.Ordinal))
         {
             return Ok(new { mode = "key", email = (string?)null, rooms = (IReadOnlyList<string>?)null, admin = true });
         }
@@ -186,6 +242,7 @@ public sealed class AuthController : ControllerBase
 
     private bool IsAdmin() =>
         string.Equals(HttpContext.Items[ApiKeyMiddleware.AuthModeItem] as string, "key", StringComparison.Ordinal)
+        || string.Equals(HttpContext.Items[ApiKeyMiddleware.AuthModeItem] as string, "local", StringComparison.Ordinal)
         || (HttpContext.Items[ApiKeyMiddleware.DashboardSessionItem] is DashboardSession session && session.IsAdmin);
 
     private int HttpPort()

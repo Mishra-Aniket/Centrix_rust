@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 /// Application paths structure
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppPaths {
     pub shared_root: PathBuf,
     pub settings_file: PathBuf,
@@ -16,12 +17,12 @@ pub struct AppPaths {
 fn shared_root() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
-        PathBuf::from(r"C:\ProgramData\LectureAgent")
+        PathBuf::from(r"C:\ProgramData\Centrix")
     }
     #[cfg(not(target_os = "windows"))]
     {
         let home = std::env::var("HOME").unwrap_or_else(|_| "~".into());
-        PathBuf::from(home).join(".local/share/LectureAgent")
+        PathBuf::from(home).join(".local/share/Centrix")
     }
 }
 
@@ -35,8 +36,13 @@ fn data_directory() -> PathBuf {
 
 fn agent_executable() -> Option<PathBuf> {
     let possible_paths = [
-        std::env::current_exe().unwrap_or_default().parent().unwrap_or(std::path::Path::new("")).join("../agent/LectureAgent.exe"),
-        PathBuf::from(r"C:\ProgramData\Centrix\agent\LectureAgent.exe"),
+        std::env::current_exe()
+            .unwrap_or_default()
+            .parent()
+            .unwrap_or(std::path::Path::new(""))
+            .join("../agent/CentrixAgent.exe"),
+        PathBuf::from(r"C:\ProgramData\Centrix\agent\CentrixAgent.exe"),
+        PathBuf::from(r"C:\ProgramData\Centrix\agent\Centrix.exe"),
         PathBuf::from(r"C:\ProgramData\LectureAgentApp\agent\LectureAgent.exe"),
     ];
 
@@ -62,9 +68,11 @@ pub fn read_settings() -> Result<Value, String> {
             "Database": { "SqlitePath": "" }
         }));
     }
-    
-    let content = fs::read_to_string(&path).map_err(|e| format!("Failed to read settings: {}", e))?;
-    let value: Value = serde_json::from_str(&content).map_err(|e| format!("Invalid JSON: {}", e))?;
+
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read settings: {}", e))?;
+    let value: Value =
+        serde_json::from_str(&content).map_err(|e| format!("Invalid JSON: {}", e))?;
     Ok(value)
 }
 
@@ -75,13 +83,13 @@ pub fn save_settings(settings: Value) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    
+
     let temp_path = path.with_extension("json.tmp");
     let content = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    
+
     fs::write(&temp_path, content).map_err(|e| format!("Failed to write tmp file: {}", e))?;
     fs::rename(&temp_path, &path).map_err(|e| format!("Failed to save settings: {}", e))?;
-    
+
     Ok(())
 }
 

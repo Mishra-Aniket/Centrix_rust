@@ -14,9 +14,13 @@ namespace LectureAgent.Desktop;
 /// </summary>
 internal sealed class MainForm : Form
 {
-    private static readonly Color HeaderColor = Color.FromArgb(27, 16, 51);
-    private static readonly Color AccentColor = Color.FromArgb(134, 59, 255);
-    private static readonly Color MutedTextColor = Color.FromArgb(185, 174, 220);
+    private static readonly Color HeaderColor = Color.FromArgb(20, 20, 19);
+    private static readonly Color CardColor = Color.FromArgb(28, 28, 26);
+    private static readonly Color BorderColor = Color.FromArgb(40, 40, 37);
+    private static readonly Color TextColor = Color.FromArgb(236, 232, 225);
+    private static readonly Color MutedTextColor = Color.FromArgb(142, 139, 133);
+    private static readonly Color CreamAccent = Color.FromArgb(237, 234, 229);
+    private static readonly Color DarkAccent = Color.FromArgb(20, 20, 19);
     private static readonly Color RunningColor = Color.FromArgb(52, 211, 153);
     private static readonly Color WarningColor = Color.FromArgb(251, 191, 36);
     private static readonly Color StoppedColor = Color.FromArgb(248, 113, 113);
@@ -31,29 +35,31 @@ internal sealed class MainForm : Form
     private readonly Label _statusLabel = new();
     private readonly Label _detailLabel = new();
     private readonly Button _pauseButton;
-    private readonly Panel _content = new() { Dock = DockStyle.Fill, BackColor = Color.White };
+    private readonly Panel _content = new() { Dock = DockStyle.Fill, BackColor = Color.FromArgb(20, 20, 19) };
     private readonly TableLayoutPanel _offlinePanel;
     private readonly Label _offlineTitle = new();
     private readonly Label _offlineDetail = new();
     private readonly Button _startAgentButton = new()
     {
-        Text = "Start agent",
+        Text = "Start agent →",
         AutoSize = true,
         FlatStyle = FlatStyle.Flat,
-        BackColor = AccentColor,
-        ForeColor = Color.White,
-        Padding = new Padding(14, 7, 14, 7),
-        Margin = new Padding(0, 0, 10, 0)
+        BackColor = CreamAccent,
+        ForeColor = DarkAccent,
+        Padding = new Padding(16, 8, 16, 8),
+        Margin = new Padding(0, 0, 10, 0),
+        Cursor = Cursors.Hand
     };
     private readonly Button _installServiceButton = new()
     {
-        Text = "Install background service",
+        Text = "Install background service →",
         AutoSize = true,
         FlatStyle = FlatStyle.Flat,
-        BackColor = AccentColor,
-        ForeColor = Color.White,
-        Padding = new Padding(14, 7, 14, 7),
+        BackColor = CreamAccent,
+        ForeColor = DarkAccent,
+        Padding = new Padding(16, 8, 16, 8),
         Margin = new Padding(0, 0, 10, 0),
+        Cursor = Cursors.Hand,
         Visible = false
     };
     private readonly Button _setupWizardButton = new()
@@ -61,10 +67,11 @@ internal sealed class MainForm : Form
         Text = "Run setup wizard",
         AutoSize = true,
         FlatStyle = FlatStyle.Flat,
-        BackColor = Color.FromArgb(238, 235, 248),
-        ForeColor = Color.FromArgb(51, 41, 82),
-        Padding = new Padding(14, 7, 14, 7),
+        BackColor = Color.FromArgb(35, 35, 32),
+        ForeColor = TextColor,
+        Padding = new Padding(14, 8, 14, 8),
         Margin = new Padding(0, 0, 10, 0),
+        Cursor = Cursors.Hand,
         Visible = false
     };
 
@@ -85,7 +92,7 @@ internal sealed class MainForm : Form
         MinimumSize = new Size(940, 620);
         Size = new Size(1240, 820);
         StartPosition = FormStartPosition.CenterScreen;
-        BackColor = Color.White;
+        BackColor = Color.FromArgb(20, 20, 19);
         Font = new Font("Segoe UI", 9F);
 
         _pauseButton = CreateHeaderButton("Pause uploads");
@@ -108,7 +115,7 @@ internal sealed class MainForm : Form
             RowCount = 2,
             Margin = Padding.Empty
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64F));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 72F));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
         root.Controls.Add(BuildHeader(), 0, 0);
@@ -135,27 +142,46 @@ internal sealed class MainForm : Form
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        var info = new Panel { Dock = DockStyle.Fill, BackColor = HeaderColor };
+        var info = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = HeaderColor,
+            Padding = new Padding(0, 10, 0, 8),
+            Margin = Padding.Empty
+        };
+        info.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
 
         var logoImage = AppPaths.LoadLogoImage();
-        int textLeft = 0;
         if (logoImage != null)
         {
             var logoBox = new PictureBox
             {
-                Location = new Point(0, 11),
                 Size = new Size(42, 42),
                 SizeMode = PictureBoxSizeMode.Zoom,
                 BackColor = Color.Transparent,
-                Image = logoImage
+                Image = logoImage,
+                Margin = new Padding(0, 2, 12, 0)
             };
-            info.Controls.Add(logoBox);
-            textLeft = 50;
+            info.Controls.Add(logoBox, 0, 0);
         }
+
+        var textStack = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            BackColor = HeaderColor,
+            Margin = Padding.Empty
+        };
+        textStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        textStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         var topRow = new FlowLayoutPanel
         {
-            Location = new Point(textLeft, 10),
+            Dock = DockStyle.Top,
             AutoSize = true,
             FlowDirection = FlowDirection.LeftToRight,
             BackColor = HeaderColor,
@@ -167,16 +193,16 @@ internal sealed class MainForm : Form
         {
             Text = "Centrix",
             AutoSize = true,
-            Font = new Font("Segoe UI", 12F, FontStyle.Bold),
-            ForeColor = Color.White,
-            Margin = new Padding(0, 0, 10, 0)
+            Font = new Font("Georgia", 13F, FontStyle.Regular),
+            ForeColor = TextColor,
+            Margin = new Padding(0, 0, 8, 0)
         };
 
         _statusDot.AutoSize = true;
         _statusDot.Text = "●";
         _statusDot.Font = new Font("Segoe UI", 10F);
         _statusDot.ForeColor = WarningColor;
-        _statusDot.Margin = new Padding(0, 2, 3, 0);
+        _statusDot.Margin = new Padding(0, 2, 4, 0);
 
         _statusLabel.AutoSize = true;
         _statusLabel.Text = "Checking…";
@@ -190,12 +216,13 @@ internal sealed class MainForm : Form
 
         _detailLabel.AutoSize = true;
         _detailLabel.Text = "Connecting to the agent on this PC…";
-        _detailLabel.Font = new Font("Segoe UI", 8.25F);
+        _detailLabel.Font = new Font("Segoe UI", 8.5F);
         _detailLabel.ForeColor = MutedTextColor;
-        _detailLabel.Location = new Point(textLeft + 2, 37);
+        _detailLabel.Margin = new Padding(0, 2, 0, 0);
 
-        info.Controls.Add(topRow);
-        info.Controls.Add(_detailLabel);
+        textStack.Controls.Add(topRow, 0, 0);
+        textStack.Controls.Add(_detailLabel, 0, 1);
+        info.Controls.Add(textStack, 1, 0);
 
         var buttons = new FlowLayoutPanel
         {
@@ -239,7 +266,7 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 3,
-            BackColor = Color.FromArgb(249, 248, 252)
+            BackColor = Color.FromArgb(20, 20, 19)
         };
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -251,8 +278,8 @@ internal sealed class MainForm : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
             Anchor = AnchorStyles.None,
-            BackColor = Color.White,
-            Padding = new Padding(36, 28, 36, 28),
+            BackColor = CardColor,
+            Padding = new Padding(36, 32, 36, 32),
             Width = 640
         };
 
@@ -261,7 +288,7 @@ internal sealed class MainForm : Form
         {
             var logoBox = new PictureBox
             {
-                Size = new Size(64, 64),
+                Size = new Size(54, 54),
                 SizeMode = PictureBoxSizeMode.Zoom,
                 BackColor = Color.Transparent,
                 Image = logoImage,
@@ -272,23 +299,23 @@ internal sealed class MainForm : Form
         }
 
         _offlineTitle.AutoSize = true;
-        _offlineTitle.Text = "Connecting to Centrix Agent…";
-        _offlineTitle.Font = new Font("Segoe UI", 16F, FontStyle.Bold);
-        _offlineTitle.ForeColor = Color.FromArgb(27, 16, 51);
+        _offlineTitle.Text = "Connecting to Centrix…";
+        _offlineTitle.Font = new Font("Georgia", 18F, FontStyle.Regular);
+        _offlineTitle.ForeColor = TextColor;
         _offlineTitle.Margin = new Padding(0, 0, 0, 8);
 
         _offlineDetail.AutoSize = true;
         _offlineDetail.MaximumSize = new Size(560, 0);
         _offlineDetail.Text = "This takes a few seconds after the PC starts.";
         _offlineDetail.Font = new Font("Segoe UI", 9.5F);
-        _offlineDetail.ForeColor = Color.FromArgb(94, 90, 112);
-        _offlineDetail.Margin = new Padding(0, 0, 0, 18);
+        _offlineDetail.ForeColor = MutedTextColor;
+        _offlineDetail.Margin = new Padding(0, 0, 0, 24);
 
         var badges = new FlowLayoutPanel
         {
             AutoSize = true,
             FlowDirection = FlowDirection.LeftToRight,
-            Margin = new Padding(0, 0, 0, 20),
+            Margin = new Padding(0, 0, 0, 24),
             WrapContents = false
         };
 
@@ -299,10 +326,10 @@ internal sealed class MainForm : Form
             {
                 Text = h,
                 AutoSize = true,
-                BackColor = Color.FromArgb(243, 240, 252),
-                ForeColor = Color.FromArgb(70, 48, 120),
-                Font = new Font("Segoe UI", 8.25F, FontStyle.Bold),
-                Padding = new Padding(8, 4, 8, 4),
+                BackColor = Color.FromArgb(35, 35, 32),
+                ForeColor = TextColor,
+                Font = new Font("Segoe UI", 8.25F),
+                Padding = new Padding(10, 5, 10, 5),
                 Margin = new Padding(0, 0, 8, 0)
             };
             badges.Controls.Add(badge);
@@ -338,16 +365,32 @@ internal sealed class MainForm : Form
             Text = "Open logs folder",
             AutoSize = true,
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(238, 235, 248),
-            ForeColor = Color.FromArgb(51, 41, 82),
-            Padding = new Padding(14, 7, 14, 7)
+            BackColor = Color.FromArgb(35, 35, 32),
+            ForeColor = TextColor,
+            Padding = new Padding(14, 8, 14, 8),
+            Cursor = Cursors.Hand
         };
         logs.FlatAppearance.BorderSize = 0;
         logs.Click += (_, _) => OpenFolder(AppPaths.LogDirectory);
 
+        var settingsBtn = new Button
+        {
+            Text = "Settings",
+            AutoSize = true,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(35, 35, 32),
+            ForeColor = TextColor,
+            Padding = new Padding(14, 8, 14, 8),
+            Margin = new Padding(0, 0, 8, 0),
+            Cursor = Cursors.Hand
+        };
+        settingsBtn.FlatAppearance.BorderSize = 0;
+        settingsBtn.Click += (_, _) => OpenSettings();
+
         actions.Controls.Add(_installServiceButton);
         actions.Controls.Add(_setupWizardButton);
         actions.Controls.Add(_startAgentButton);
+        actions.Controls.Add(settingsBtn);
         actions.Controls.Add(logs);
 
         card.Controls.Add(_offlineTitle);
@@ -821,14 +864,16 @@ internal sealed class MainForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(48, 33, 84),
-            ForeColor = Color.White,
+            BackColor = Color.FromArgb(35, 35, 32),
+            ForeColor = TextColor,
             Padding = new Padding(10, 6, 10, 6),
             Margin = new Padding(6, 0, 0, 0),
-            TabStop = false
+            TabStop = false,
+            Font = new Font("Segoe UI", 8.5F),
+            Cursor = Cursors.Hand
         };
         button.FlatAppearance.BorderSize = 0;
-        button.FlatAppearance.MouseOverBackColor = AccentColor;
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(50, 50, 46);
         return button;
     }
 

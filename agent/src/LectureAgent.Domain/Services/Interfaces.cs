@@ -11,12 +11,22 @@ public interface IFileWatcher
     event EventHandler<FileDetectedEventArgs>? FileDetected;
 
     void Start(string folderPath);
+
+    /// <summary>
+    /// Watches one more folder (e.g. a separate notes/PDF folder) in addition to the
+    /// folder given to Start, and scans it for existing media immediately.
+    /// </summary>
+    void AddFolder(string folderPath);
+
     void Stop();
     bool IsRunning { get; }
     string? MonitoredFolderPath { get; }
 
+    /// <summary>Every folder currently being watched (recordings + notes folders).</summary>
+    IReadOnlyList<string> MonitoredFolders { get; }
+
     /// <summary>
-    /// Re-enumerates the monitored folder and tracks any media files that are not
+    /// Re-enumerates the monitored folders and tracks any media files that are not
     /// already being watched. Returns the number of newly tracked files.
     /// </summary>
     int ScanExisting();
@@ -42,6 +52,46 @@ public interface IMatchingEngine
 }
 
 /// <summary>
+/// Publishes a processed lecture video to YouTube or makes it private again.
+/// </summary>
+public interface IYouTubePublisher
+{
+    Task<YouTubePublishResult> PublishAsync(LectureSession lecture, CancellationToken cancellationToken = default);
+    Task UnpublishAsync(string youTubeId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Result returned after a YouTube video is uploaded.
+/// </summary>
+public sealed class YouTubePublishResult
+{
+    public string VideoId { get; set; } = null!;
+    public string ThumbnailUrl { get; set; } = null!;
+}
+
+/// <summary>
+/// Local, read-only quality-control inspection of lecture assets.
+/// </summary>
+public interface IQcChecker
+{
+    Task<QcReport> CheckAsync(LectureSession lecture, CancellationToken cancellationToken = default);
+}
+
+public sealed class QcReport
+{
+    public QcStatus Status { get; set; }
+    public DateTime CheckedAt { get; set; } = DateTime.UtcNow;
+    public List<QcCheckResult> Checks { get; set; } = new();
+}
+
+public sealed class QcCheckResult
+{
+    public string Name { get; set; } = null!;
+    public bool Passed { get; set; }
+    public string Detail { get; set; } = null!;
+}
+
+/// <summary>
 /// Result from the matching engine.
 /// </summary>
 public class MatchingResult
@@ -51,6 +101,7 @@ public class MatchingResult
     public int ConfidenceScore { get; set; } // 0-100
     public MatchingDecision Decision { get; set; }
     public string? ReasoningText { get; set; }
+    public MatchFailureCode FailureCode { get; set; } = MatchFailureCode.None;
     public MatchingScoringDetails? ScoringDetails { get; set; }
     public List<TimetableEntry> Candidates { get; set; } = new();
 }
@@ -90,6 +141,7 @@ public interface IGoogleDriveUploader
     Task<bool> VerifyUploadAsync(string fileId, string expectedHash);
     Task CreateFolderStructureAsync(string folderPath);
     Task<List<string>> ListFoldersAsync(string? query = null, int limit = 200, string? underPath = null, CancellationToken cancellationToken = default);
+    Task<Stream> OpenDownloadStreamAsync(string fileId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -146,7 +198,23 @@ public interface ILectureRepository : IRepository<LectureSession>
     Task<List<LectureSession>> GetByStatusAsync(LectureStatus status);
     Task<List<LectureSession>> GetPendingReviewAsync(string centerId);
     Task<LectureSession?> GetByVideoLocalPathAsync(string videoLocalPath);
+    Task<LectureSession?> GetByFilePathAsync(string filePath);
     Task<(List<LectureSession> Items, int TotalCount)> GetPagedLecturesAsync(string? centerId, LectureStatus? status, int offset, int limit);
+    Task<LectureSummary> GetSummaryAsync(string centerId);
+    Task<List<LectureSession>> GetByYouTubePublishStatusAsync(params YouTubePublishStatus[] statuses);
+}
+
+/// <summary>
+/// Aggregate lecture pipeline counts for a center.
+/// </summary>
+public class LectureSummary
+{
+    public int Total { get; set; }
+    public int Uploaded { get; set; }
+    public int Matched { get; set; }
+    public int Unmatched { get; set; }
+    public int FailedUpload { get; set; }
+    public int PendingReview { get; set; }
 }
 
 /// <summary>

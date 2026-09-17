@@ -4,13 +4,14 @@ use std::fs;
 use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct BandwidthSettings {
-    pub max_upload_speed_mbps: u32,       // 0 = unlimited, 5, 10, 20, etc.
-    pub off_peak_enabled: bool,           // If true, upload only in off-peak hours
-    pub off_peak_start: String,           // e.g. "20:00" (8 PM)
-    pub off_peak_end: String,             // e.g. "08:00" (8 AM)
-    pub pause_during_class_hours: bool,   // Pause daytime uploads automatically
-    pub current_status: Option<String>,   // "Unrestricted", "Throttled", "OffPeakActive"
+    pub max_upload_speed_mbps: u32,     // 0 = unlimited, 5, 10, 20, etc.
+    pub off_peak_enabled: bool,         // If true, upload only in off-peak hours
+    pub off_peak_start: String,         // e.g. "20:00" (8 PM)
+    pub off_peak_end: String,           // e.g. "08:00" (8 AM)
+    pub pause_during_class_hours: bool, // Pause daytime uploads automatically
+    pub current_status: Option<String>, // "Unrestricted", "Throttled", "OffPeakActive"
 }
 
 impl Default for BandwidthSettings {
@@ -29,12 +30,12 @@ impl Default for BandwidthSettings {
 fn config_path() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
-        PathBuf::from(r"C:\ProgramData\LectureAgent\bandwidth_settings.json")
+        PathBuf::from(r"C:\ProgramData\Centrix\bandwidth_settings.json")
     }
     #[cfg(not(target_os = "windows"))]
     {
         let home = std::env::var("HOME").unwrap_or_else(|_| "~".into());
-        PathBuf::from(home).join(".local/share/LectureAgent/bandwidth_settings.json")
+        PathBuf::from(home).join(".local/share/Centrix/bandwidth_settings.json")
     }
 }
 
@@ -99,8 +100,7 @@ pub fn save_bandwidth_settings(mut settings: BandwidthSettings) -> Result<(), St
 
     let json = serde_json::to_string_pretty(&settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-    fs::write(&path, json)
-        .map_err(|e| format!("Failed to save bandwidth settings: {}", e))?;
+    fs::write(&path, json).map_err(|e| format!("Failed to save bandwidth settings: {}", e))?;
 
     Ok(())
 }

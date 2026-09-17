@@ -5,14 +5,16 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Linq;
 
 /// <summary>
-/// Watches for video and PDF files in a folder.
+/// Watches for video and PDF files in one or more folders (recordings folder plus an
+/// optional separate notes/PDF folder). Every watched folder is scanned recursively.
 /// </summary>
 public class FileWatcher : IFileWatcher, IDisposable
 {
-    private FileSystemWatcher? _watcher;
-    private string? _folderPath;
+    private readonly List<FileSystemWatcher> _watchers = new();
+    private readonly List<string> _folderPaths = new();
     private readonly ConcurrentDictionary<string, TrackedFileInfo> _trackedFiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger<FileWatcher> _logger;
     private readonly int _stabilityCheckMs = 2000;
@@ -22,8 +24,9 @@ public class FileWatcher : IFileWatcher, IDisposable
 
     public event EventHandler<FileDetectedEventArgs>? FileDetected;
 
-    public bool IsRunning => _watcher != null;
-    public string? MonitoredFolderPath => _folderPath;
+    public bool IsRunning => _watchers.Count > 0;
+    public string? MonitoredFolderPath => _folderPaths.FirstOrDefault();
+    public IReadOnlyList<string> MonitoredFolders => _folderPaths;
 
     private sealed class TrackedFileInfo
     {
@@ -69,19 +72,82 @@ public class FileWatcher : IFileWatcher, IDisposable
         if (IsRunning)
             throw new InvalidOperationException("File watcher already running");
 
-        if (!Directory.Exists(folderPath))
-        {
-            Directory.CreateDirectory(folderPath);
-            _logger.LogInformation($"Created file watcher directory: {folderPath}");
-        }
-
         _logger.LogInformation($"Starting file watcher for: {folderPath}");
-        _folderPath = folderPath;
+        AddFolderCore(folderPath);
+
+        if (_folderPaths.Count == 0)
+        {
+            throw new DirectoryNotFoundException($"No watchable folder could be created for: {folderPath}");
+        }
 
         _pollCts = new CancellationTokenSource();
         _pollTask = Task.Run(() => PollingLoopAsync(_pollCts.Token));
 
-        _watcher = new FileSystemWatcher(folderPath)
+        foreach (var folder in _folderPaths)
+        {
+            CreateWatcherFor(folder);
+        }
+
+        ScanExisting();
+
+        _logger.LogInformation("File watcher started with active stability monitoring");
+    }
+
+    /// <summary>
+    /// Watches one more folder (e.g. a separate notes/PDF folder) while the watcher is
+    /// already running, and scans it for existing media straight away.
+    /// </summary>
+    public void AddFolder(string folderPath)
+    {
+        if (!IsRunning)
+            throw new InvalidOperationException("File watcher is not running; call Start first");
+
+        var countBefore = _folderPaths.Count;
+        AddFolderCore(folderPath);
+        for (var i = countBefore; i < _folderPaths.Count; i++)
+        {
+            var folder = _folderPaths[i];
+            CreateWatcherFor(folder);
+            ScanExisting(folder);
+        }
+    }
+
+    private void AddFolderCore(string folderPath)
+    {
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            _logger.LogWarning("Empty folder path passed to the file watcher; ignored");
+            return;
+        }
+
+        var normalized = Path.GetFullPath(folderPath);
+        if (_folderPaths.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+        {
+            return; // already watched
+        }
+
+        if (!Directory.Exists(normalized))
+        {
+            try
+            {
+                Directory.CreateDirectory(normalized);
+                _logger.LogInformation($"Created file watcher directory: {normalized}");
+            }
+            catch (Exception ex)
+            {
+                // A missing drive or an unreachable share must not stop the agent: the
+                // monitoring retry loop will call Start/AddFolder again until it works.
+                _logger.LogWarning($"Could not watch folder '{normalized}': {ex.Message}. Will retry in background.");
+                return;
+            }
+        }
+
+        _folderPaths.Add(normalized);
+    }
+
+    private void CreateWatcherFor(string folderPath)
+    {
+        var watcher = new FileSystemWatcher(folderPath)
         {
             Filter = "*.*",
             NotifyFilter = NotifyFilters.FileName | NotifyFilters.Size | NotifyFilters.LastWrite,
@@ -89,20 +155,28 @@ public class FileWatcher : IFileWatcher, IDisposable
             EnableRaisingEvents = true
         };
 
-        _watcher.Created += OnFileEvent;
-        _watcher.Changed += OnFileEvent;
-        _watcher.Error += OnError;
-
-        ScanExisting();
-
-        _logger.LogInformation("File watcher started with active stability monitoring");
+        watcher.Created += OnFileEvent;
+        watcher.Changed += OnFileEvent;
+        watcher.Error += OnError;
+        _watchers.Add(watcher);
     }
 
     public int ScanExisting()
     {
-        if (_folderPath == null || !Directory.Exists(_folderPath))
+        if (!IsRunning)
             return 0;
 
+        var newlyTracked = 0;
+        foreach (var folder in _folderPaths.ToArray())
+        {
+            newlyTracked += ScanExisting(folder);
+        }
+
+        return newlyTracked;
+    }
+
+    private int ScanExisting(string folder)
+    {
         var newlyTracked = 0;
 
         try
@@ -114,7 +188,7 @@ public class FileWatcher : IFileWatcher, IDisposable
                 AttributesToSkip = FileAttributes.Hidden | FileAttributes.System
             };
 
-            foreach (var file in Directory.EnumerateFiles(_folderPath, "*.*", enumOptions))
+            foreach (var file in Directory.EnumerateFiles(folder, "*.*", enumOptions))
             {
                 if (IsMediaFile(file) && IsRecentFile(file) && _trackedFiles.TryAdd(file, new TrackedFileInfo { FilePath = file }))
                 {
@@ -129,7 +203,7 @@ public class FileWatcher : IFileWatcher, IDisposable
 
         if (newlyTracked > 0)
         {
-            _logger.LogInformation($"Directory scan tracked {newlyTracked} new media file(s) for stability monitoring");
+            _logger.LogInformation($"Directory scan tracked {newlyTracked} new media file(s) in {folder} for stability monitoring");
         }
 
         return newlyTracked;
@@ -137,7 +211,7 @@ public class FileWatcher : IFileWatcher, IDisposable
 
     public void Stop()
     {
-        if (_watcher == null)
+        if (_watchers.Count == 0)
             return;
 
         _logger.LogInformation("Stopping file watcher");
@@ -155,13 +229,17 @@ public class FileWatcher : IFileWatcher, IDisposable
             _pollTask = null;
         }
 
-        _watcher.EnableRaisingEvents = false;
-        _watcher.Created -= OnFileEvent;
-        _watcher.Changed -= OnFileEvent;
-        _watcher.Error -= OnError;
-        _watcher.Dispose();
-        _watcher = null;
-        _folderPath = null;
+        foreach (var watcher in _watchers)
+        {
+            watcher.EnableRaisingEvents = false;
+            watcher.Created -= OnFileEvent;
+            watcher.Changed -= OnFileEvent;
+            watcher.Error -= OnError;
+            watcher.Dispose();
+        }
+
+        _watchers.Clear();
+        _folderPaths.Clear();
         _trackedFiles.Clear();
     }
 
@@ -236,7 +314,14 @@ public class FileWatcher : IFileWatcher, IDisposable
                 _logger.LogWarning($"Error in file stability poller: {ex.Message}");
             }
 
-            await Task.Delay(_stabilityCheckMs, cancellationToken);
+            try
+            {
+                await Task.Delay(_stabilityCheckMs, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
     }
 
@@ -254,10 +339,10 @@ public class FileWatcher : IFileWatcher, IDisposable
         }
         catch (UnauthorizedAccessException)
         {
-            // Read-only or permissions check; try opening read-only without sharing
+            // Read-only or permissions check; try opening read-only with exclusive access (no sharing)
             try
             {
-                using var stream = File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using var stream = File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.None);
                 return stream.Length > 0;
             }
             catch

@@ -255,6 +255,8 @@ public class MatchingService
         _logger.LogInformation($"Analyzing lecture {lecture.LectureSessionId}");
 
         var result = await _matchingEngine.AnalyzeAsync(lecture);
+        lecture.MatchAttempts++;
+        lecture.MatchedAt = DateTime.UtcNow;
 
         if (result.Decision == MatchingDecision.AutoAssigned && result.MatchedSlot != null)
         {
@@ -270,6 +272,9 @@ public class MatchingService
             lecture.MatchingReason = System.Text.Json.JsonSerializer.Serialize(result.ScoringDetails);
             lecture.AssignmentSource = "AUTO";
             lecture.Status = LectureStatus.AutoAssigned;
+            lecture.MatchStatus = MatchStatus.Matched;
+            lecture.FailureCode = MatchFailureCode.None;
+            lecture.FailureReason = null;
             lecture.UpdatedAt = DateTime.UtcNow;
             lecture.LastStatusChange = DateTime.UtcNow;
 
@@ -293,6 +298,23 @@ public class MatchingService
             lecture.Status = LectureStatus.ReviewRequired;
             lecture.ConfidenceScore = result.ConfidenceScore;
             lecture.MatchingReason = System.Text.Json.JsonSerializer.Serialize(result.ScoringDetails);
+            lecture.MatchStatus = MatchStatus.Matched;
+            lecture.FailureCode = result.FailureCode;
+            lecture.FailureReason = null;
+            lecture.UpdatedAt = DateTime.UtcNow;
+            lecture.LastStatusChange = DateTime.UtcNow;
+
+            await _lectureRepository.UpdateAsync(lecture);
+            await _notificationService.NotifyReviewRequiredAsync(lecture.CenterId, lecture);
+        }
+        else
+        {
+            lecture.MatchStatus = MatchStatus.NoMatch;
+            lecture.FailureCode = result.FailureCode;
+            lecture.FailureReason = result.ReasoningText;
+            lecture.ConfidenceScore = result.ConfidenceScore;
+            lecture.MatchingReason = System.Text.Json.JsonSerializer.Serialize(result.ScoringDetails);
+            lecture.Status = LectureStatus.ReviewRequired;
             lecture.UpdatedAt = DateTime.UtcNow;
             lecture.LastStatusChange = DateTime.UtcNow;
 

@@ -11,7 +11,7 @@
     <Product>Centrix</Product>
     <AssemblyTitle>Centrix</AssemblyTitle>
     <Company>PhysicsWallah</Company>
-    <Version>1.0.0</Version>
+    <Version>1.0.4</Version>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <!-- Lets the project restore and compile from macOS/Linux CI as well as Windows. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>

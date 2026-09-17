@@ -127,12 +127,19 @@ public class MatchingEngine : IMatchingEngine
         {
             result.Decision = MatchingDecision.NoMatch;
             result.ConfidenceScore = 0;
+            result.FailureCode = MatchFailureCode.NoTimetableSlots;
             result.ReasoningText = "No active timetable slots found for this room on this date (slots may be empty or cancelled)";
             return result;
         }
 
         // Score each candidate
+        // Score each candidate
         var scoredCandidates = new List<(TimetableEntry Slot, int Score, MatchingScoringDetails Details, TimetableOverride? Override)>();
+
+        // Extract PDF metadata hints if this is a PDF file
+        var filePath = lecture.VideoFileLocalPath ?? lecture.PdfFileLocalPath;
+        var isPdf = !string.IsNullOrWhiteSpace(filePath) && string.Equals(Path.GetExtension(filePath), ".pdf", StringComparison.OrdinalIgnoreCase);
+        var pdfHints = isPdf ? PdfTextExtractor.Extract(filePath) : null;
 
         foreach (var (slot, appliedOverride) in effectiveSlots)
         {
@@ -140,13 +147,21 @@ public class MatchingEngine : IMatchingEngine
             var timeOverlapScore = CalculateTimeOverlapScore(lecture, slot);
 
             if (timeOverlapScore == 0)
-                continue; // No overlap, skip this slot
+            {
+                // For videos, time overlap is mandatory.
+                // For whiteboard PDFs, notes are often exported hours after class ended.
+                // If PDF metadata / cover slide OCR directly matches the batch code, allow scoring.
+                if (!isPdf || pdfHints == null || !PdfTextExtractor.MatchesBatch(pdfHints, slot.BatchId))
+                    continue;
+
+                timeOverlapScore = 50; // Partial score for non-overlapping but exact batch matched notes
+            }
 
             // Calculate all factors
             var roomScore = 100; // Room matched from recording device
             var durationScore = CalculateDurationScore(lecture, slot);
-            var batchSubjectScore = CalculateBatchSubjectScore(lecture.VideoFileLocalPath ?? lecture.PdfFileLocalPath, slot);
-            var teacherScore = !string.IsNullOrEmpty(slot.TeacherId) ? 80 : 50;
+            var batchSubjectScore = CalculateBatchSubjectScore(filePath, slot, pdfHints);
+            var teacherScore = CalculateTeacherScore(slot, pdfHints);
             var historicalScore = await CalculateHistoricalPatternScore(lecture.CenterId, lecture.RoomId, slot);
             var contextScore = CalculateContextScore(lecture, slot);
 
@@ -174,6 +189,7 @@ public class MatchingEngine : IMatchingEngine
         {
             result.Decision = MatchingDecision.NoMatch;
             result.ConfidenceScore = 0;
+            result.FailureCode = MatchFailureCode.TimeOverlapFailed;
             result.ReasoningText = "No matching timetable slots (time overlap check failed)";
             return result;
         }
@@ -203,27 +219,52 @@ public class MatchingEngine : IMatchingEngine
         else
         {
             result.Decision = MatchingDecision.ReviewRequired;
+            result.FailureCode = MatchFailureCode.LowConfidence;
             result.ReasoningText = $"Low confidence - requires review (score: {result.ConfidenceScore}%){overrideNote}";
         }
 
         return result;
     }
 
-    private static int CalculateBatchSubjectScore(string? filePath, TimetableEntry slot)
+    private static int CalculateBatchSubjectScore(string? filePath, TimetableEntry slot, PdfExtractedMetadata? pdfHints)
     {
+        if (pdfHints != null && pdfHints.HasHints)
+        {
+            var batchMatch = PdfTextExtractor.MatchesBatch(pdfHints, slot.BatchId);
+            var subjectMatch = PdfTextExtractor.MatchesSubject(pdfHints, slot.SubjectId);
+
+            if (batchMatch && subjectMatch)
+                return 100;
+            if (batchMatch)
+                return 95;
+            if (subjectMatch)
+                return 90;
+        }
+
         if (string.IsNullOrWhiteSpace(filePath))
             return 75;
 
         var fileName = Path.GetFileNameWithoutExtension(filePath).ToLowerInvariant();
-        var batchMatch = !string.IsNullOrEmpty(slot.BatchId) && fileName.Contains(slot.BatchId.ToLowerInvariant());
-        var subjectMatch = !string.IsNullOrEmpty(slot.SubjectId) && fileName.Contains(slot.SubjectId.ToLowerInvariant());
+        var nameBatchMatch = !string.IsNullOrEmpty(slot.BatchId) && fileName.Contains(slot.BatchId.ToLowerInvariant());
+        var nameSubjectMatch = !string.IsNullOrEmpty(slot.SubjectId) && fileName.Contains(slot.SubjectId.ToLowerInvariant());
 
-        if (batchMatch && subjectMatch)
+        if (nameBatchMatch && nameSubjectMatch)
             return 100;
-        if (batchMatch || subjectMatch)
+        if (nameBatchMatch || nameSubjectMatch)
             return 90;
 
         return 75;
+    }
+
+    private static int CalculateTeacherScore(TimetableEntry slot, PdfExtractedMetadata? pdfHints)
+    {
+        if (pdfHints != null && !string.IsNullOrWhiteSpace(pdfHints.TeacherName) && !string.IsNullOrWhiteSpace(slot.TeacherId))
+        {
+            if (PdfTextExtractor.MatchesTeacher(pdfHints, slot.TeacherId))
+                return 100;
+        }
+
+        return !string.IsNullOrEmpty(slot.TeacherId) ? 80 : 50;
     }
 
     private static int CalculateContextScore(LectureSession lecture, TimetableEntry slot)
