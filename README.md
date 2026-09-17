@@ -2,7 +2,7 @@
 
 <img src="./web/public/logo.png" alt="Centrix Logo" width="120" height="120" style="border-radius: 24px; box-shadow: 0 10px 30px rgba(0, 102, 255, 0.2);" />
 
-# ⚡ Centrix
+# Centrix
 
 ### **Autonomous Classroom Lecture Ingestion, Smart MaxHub Pairing & Resumable Direct-to-Drive Pipeline**
 
